@@ -37,7 +37,7 @@ editor_options:
 #| error: false
 #| output: false
 
-setwd("~/Github/ML-Labs")
+setwd("~/Github/ML-Labs/1")
 
 set.seed(2)
 
@@ -56,7 +56,7 @@ library(ggeffects)
 ## Task 1.1
 
 ```{r}
-data <- fread(file = './1/trumpbernie.csv')
+data <- fread(file = './trumpbernie.csv')
 
 data[1:5,20:25]
 nrow(data)
@@ -175,7 +175,7 @@ gc()
 ## Task 2.1
 
 ```{r}
-data <- fread(file = "./1/Kaggle_Social_Network_Ads.csv")
+data <- fread(file = "./Kaggle_Social_Network_Ads.csv")
 data$Purchased <- data$Purchased |> factor() 
 ```
 
@@ -251,3 +251,84 @@ The GAMs addressed the nonlinear nature of the data well. This was the main unde
 
 
 # Part 3
+```{r}
+
+rm(list = ls()) 
+gc()
+
+dt <- readRDS("dt.rds")
+
+
+
+
+cv_model <- function(dt, k = 3, d = 5){
+ DATA <- dt
+ k <- k
+ n <- nrow(DATA)
+ d <- d # polynomialdegree
+  set_ids <- cut(seq_len(n), breaks = k, labels = FALSE)
+  
+  folds <- setNames(
+    lapply(1:k, function(i) DATA[set_ids == i, ]),
+    paste0("fold_", 1:k)
+  )
+  
+  models <- setNames(
+    lapply(1:k, function(fold_idx) {
+      setNames(
+        lapply(1:d, function(deg) lm(Y ~ poly(X, deg), data = folds[[fold_idx]])),
+        paste0("deg_", 1:d)
+      )
+    }),
+    paste0("fold_", 1:k)
+  )
+  
+  predictions <- setNames(
+    lapply(1:k, function(fold) {
+      other_folds <- setdiff(1:k, fold)
+      
+      setNames(
+        lapply(1:d, function(deg) {
+          setNames(
+            lapply(other_folds, function(test_fold) {
+              predict(models[[fold]][[deg]], newdata = folds[[test_fold]])
+            }),
+            paste0("test_fold_", other_folds)
+          )
+        }),
+        paste0("deg_", 1:d)
+      )
+    }),
+    paste0("fold_", 1:k)
+  )
+  
+  # Calculate MSE using the predictions object
+  mse <- lapply(names(predictions), function(fold_name) {
+    lapply(names(predictions[[fold_name]]), function(deg_name) {
+      sapply(names(predictions[[fold_name]][[deg_name]]), function(test_fold_name) {
+        pred <- predictions[[fold_name]][[deg_name]][[test_fold_name]]
+        true <- folds[[sub("test_fold_", "fold_", test_fold_name)]]$Y
+        mean((pred - true)^2)
+      }, USE.NAMES = TRUE)
+    })
+  })
+  names(mse) <- names(predictions)
+  for(fold in names(mse)) names(mse[[fold]]) <- names(predictions[[fold]])
+  
+  avg_mse <- sapply(1:d, function(deg) {
+    all_deg_mse <- unlist(lapply(mse, function(fold) fold[[paste0("deg_", deg)]]))
+    mean(all_deg_mse)
+  })
+  names(avg_mse) <- paste0("deg_", 1:d)
+  
+  cat("The average MSE per degree are:\n") 
+  print(as.data.frame(avg_mse))
+  cat("\n\n----------\nDegree with minimum MSE: ", names(avg_mse)[which.min(avg_mse)], "\n")
+  plot(as.numeric(sub("deg_", "", names(avg_mse))),avg_mse, type = "l",
+       main = "Average MSE per Degree",xlab = "Degree",ylab = "Average MSE")
+  return(avg_mse)
+}
+
+cv_model(dt = dt, k = 2, d = 5)
+```
+
