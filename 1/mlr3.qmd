@@ -1,0 +1,85 @@
+---
+title: "mlr3 practice"
+subtitle: "my personal stuff"
+author: "Thomas Haase"
+date: last-modified
+date-format: long
+execute:
+  warning: false
+  echo: true
+  error: false  
+format: 
+  pdf: 
+    toc: true
+    geometry:
+     - top=2cm
+     - left=2cm
+     - right=2cm
+     - bottom=3cm
+    fig-pos: 'h'
+    fig-cap-location: bottom
+    tbl-cap-location: bottom
+    include-in-header:
+    - text: |
+        \usepackage{placeins}
+number-sections: true
+#bibliography: citations.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| warning: false
+#| echo: false
+#| error: false
+#| output: false
+
+setwd("~/Github/ML-Labs")
+
+set.seed(222)
+
+# Part 1
+library(mlr3verse)
+```
+
+# Part 1
+## Task 1.1
+```{r}
+data <- fread(file = './1/trumpbernie.csv')
+```
+
+```{r}
+tsk <- as_task_classif(data, target = "trump_tweet")
+
+c(tsk$nrow, tsk$ncol)
+
+tsk$data(rows = 1:10, cols = "loser")
+tsk$data(rows = tsk$row_ids[2], cols = "trump")
+```
+
+```{r}
+
+rr <- resample(tsk, 
+               lrn("classif.log_reg"), 
+               rsmp("cv", folds = 5))
+
+rr$aggregate(msr("classif.acc"))
+```
+
+```{r}
+
+
+learner <- lrn("classif.glmnet", 
+               alpha = 0, # 0 ridge, 1 lasso 
+               predict_type = "response")
+
+resampling <- rsmp("cv", folds = 5)
+
+rr <- resample(tsk, learner, resampling, store_models = TRUE)
+
+# Accuracy per fold
+rr$score(msr("classif.acc"))
+
+
+```
+

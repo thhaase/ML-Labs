@@ -218,16 +218,36 @@ gam4 <- caret::train(Purchased ~ ns(Age,4) + ns(Salary,4) + Gender,
 
 rbind(gam2$results,gam3$results,gam4$results)
 ```
-> Do you observe any improvement compared to the standard logistic regression?
-> What does the difference in performance between the standard logistic regression and the GAMs
-suggest about the former? Is it over- or underfitted? Does it have high(er) bias or high(er) variance
-compared to the GAMs?
-> Which of the three GAMs do you prefer? Motivate.
+The accuracy of all GAM models is higher than the accuracy of the standard logistic regression. 
+A better accuracy suggests higher flexibility, because the model is representing the data better. A higher flexibility is always associated with lower bias. The logistic regression is therefore more biased and less flexible as the GAMs. It is probably underfitting the data. 
+
+I prefer the gam with two degrees of freedom most, because it has the big increase in accuracy compared to the logistic regression just as the other GAMs. When comparing the increase in accuracy between the GAMs with different degrees of freedom, the rise in accuracy is neglegible considering the high flexibility added through another degree of freedom on two variables!
+
+
+## Task 2.4
 
 ```{r}
-final_model <- lm(Purchased ~ ns(Age,4) + ns(Salary,4) + Gender, 
+#| fig.align: center
+#| layout: "[1,1,1]"
+#| fig-width: 4
+#| fig-height: 3
+
+final_model <- lm(Purchased ~ ns(Age,2) + ns(Salary,2) + Gender, 
                   data = data)
-ggpreds <- ggpredict(final_model)
-plot(ggpreds)
+
+final_model_predictions <- ggpredict(final_model)
+
+plot(final_model_predictions)
 ```
 
+The plot of the "Predicted values of Purchased" vs. Age suggests that the relationship between the Age and the probability of purchasing shows a nonlinear relationship. The older a person gets, the higher gets the steepness of the curve and therefore the rise in purchasing probability.
+
+The plot of the "Predicted values of Purchased" vs. Salary suggests another nonlinear relationship. This relationship is more complex, since the customer's purchase probability follows a U-shaped curve. It starts high at low salaries, drops to its minimum around $60,000-80,000, then rises sharply at higher salary levels.
+
+
+## Task 2.5
+
+The GAMs addressed the nonlinear nature of the data well. This was the main underlying reason, why the fit could be improved. The ridge- or lasso-regression extends the original model by a penalty term that punishes high amounts of added variables. Since the data is not high dimensional and only consists of 3 possible predictors it would not improve the fit significantly compared to the standard logistic regression. 
+
+
+# Part 3
