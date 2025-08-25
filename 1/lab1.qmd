@@ -23,7 +23,7 @@ format:
     include-in-header:
     - text: |
         \usepackage{placeins}
-number-sections: true
+number-sections: false
 #bibliography: citations.bib
 editor_options: 
   chunk_output_type: console
@@ -109,7 +109,7 @@ glm_cv <- caret::train(as.factor(trump_tweet) ~ .,
 glm_cv$results
 ```
 
-The displayed accuracy is the mean accuracy of the 3 calculated models. The function takes the best model with the highest singular accuracy as the final one. The accuracy measures the amount of in/correctly predicted predictions, which for the model using crossvalidation is \~50%. Before the model reached a perfect fit, but now we extended the previous try through crossvalidation. The model does not reach a perfect fit anymore, since it is not trained on the full data and optimized on out of sample predictions. Sadly the resulting model is very bad and still only as good as a coinflip in classifying the data. The model in task 2 was definitly overfitting while this one is underfitting a lot.
+The displayed accuracy is the mean accuracy of the 3 calculated models. The function takes the best model with the highest singular accuracy as the final one. The accuracy measures the amount of in/correctly predicted predictions, which for the model using crossvalidation is \~50%. Before the model reached a perfect fit, but now we extended the previous try through crossvalidation. The model still overfits, but the accuracy displayed now is the out of sample prediction. 
 
 ## Task 1.4
 
@@ -126,16 +126,9 @@ glm_ridge <- cv.glmnet(x = as.matrix(data[,-"trump_tweet"]),
 glm_ridge
 ```
 
-The accuracy of the resulting model is `{r} 1 - glm_ridge$cvm[glm_ridge$lambda == glm_ridge$lambda.min] |> round(2)` for Lambda `{r} glm_ridge$lambda.min |> round(2)`. By using crossvalidation it becomes possible to create a model wich is optimized in regards of out-of-sample prediction.
+The accuracy of the resulting model is `{r} 1 - glm_ridge$cvm[glm_ridge$lambda == glm_ridge$lambda.min] |> round(2)` for Lambda `{r} glm_ridge$lambda.min |> round(2)`.
 
-The first model (Task 1.2) was overfitting which typically happens with models that are too flexible. Often models with higher flexibility have higher variance. Variance here means small changes in training data lead to large changes in the model. Models with higher flexibility therefore are more sensitive to different training sets - when we changed the estimationprocedure and implemented crossvalidation the accuracy dropped to 50%. This shows that just taking a sample/fold to estimate the model affected it a lot already. The standard Logit-model seems to be too flexibel for our task. To reduce the flexibility ridge regression adds a penaltyterm to punish a model using too many variables as predictors. The resulting model is way more accurate than the logistic regression model from before.
-
-```{r}
-tapply(ifelse(glm_ridge$fit.preval[,which(glm_ridge$lambda==glm_ridge$lambda.min)]>0.5,1,0)==data$trump_tweet, glm_ridge$foldid, mean) |> 
-  sd()
-```
-
-As we can see the standard deviation of the accuracy across different folds is much higher for the ridge regression compared to the logistic regression. This is a direct indicator for a lower flexibility.
+The first model (Task 1.2) was overfitting which typically happens with models that are too flexible. The standard Logit-model seems to be too flexibel for our task. To reduce the flexibility ridge regression adds a penaltyterm to punish a model using too many variables as predictors. The resulting model is way more accurate than the logistic regression model from before.
 
 ## Task 1.5
 
@@ -162,7 +155,7 @@ print(
 )
 ```
 
-When words with a large positive coefficient occur in a tweet it is more likely that the tweet was published by Trumps twitter account. Words with large negative coefficient are also strong predictors, but through the mechanism that Trump is avoiding those words. This is backed by "patriot", "prayer" and american cities/states being part of the positive coefficients. Trump avoids words with stems like "xenophob", "vulner" and "volunt". 
+When words with a large positive coefficient occur in a tweet it is more likely that the tweet was published by Trumps twitter account. Words with large negative coefficient are also strong predictors, but through the mechanism that Trump is avoiding those words and Sanders is using them instead. This is backed by "patriot", "prayer" and american cities/states being part of the positive coefficients. Trump avoids words with stems like "xenophob", "vulner" and "volunt" which are used by Sanders instead. 
 
 
 \newpage
@@ -194,6 +187,10 @@ glm <- caret::train(Purchased ~ Age + Salary + Gender,
 glm$results
 ```
 
+
+
+## Task 2.3
+
 ```{r}
 set.seed(12345)
 gam2 <- caret::train(Purchased ~ ns(Age,2) + ns(Salary,2) + Gender,
@@ -218,8 +215,9 @@ gam4 <- caret::train(Purchased ~ ns(Age,4) + ns(Salary,4) + Gender,
 
 rbind(gam2$results,gam3$results,gam4$results)
 ```
+
 The accuracy of all GAM models is higher than the accuracy of the standard logistic regression. 
-A better accuracy suggests higher flexibility, because the model is representing the data better. A higher flexibility is always associated with lower bias. The logistic regression is therefore more biased and less flexible as the GAMs. It is probably underfitting the data. 
+A better accuracy suggests higher flexibility, because the model is representing the data better. A higher flexibility is always associated with lower bias. The logistic regression is therefore more biased because it assumes linearity which makes it less flexible as the GAMs. The logistic regression underfits because of that
 
 I prefer the gam with two degrees of freedom most, because it has the big increase in accuracy compared to the logistic regression just as the other GAMs. When comparing the increase in accuracy between the GAMs with different degrees of freedom, the rise in accuracy is neglegible considering the high flexibility added through another degree of freedom on two variables!
 
@@ -332,3 +330,15 @@ cv_model <- function(dt, k = 3, d = 5){
 cv_model(dt = dt, k = 2, d = 5)
 ```
 
+
+# Quiz Wrap up
+## 1
+- Predicting grades on a 1-100 scale is a regression problem. Since we are interested in understanding this is a problem of inference.
+- Understanding the relation between the centrality of a twitter user (proxied
+by the number of followers) and the number of retweets sounds like a regression problem. Since we are interested in understanding this is an inference problem.
+- Predicting wether a student will drop out or not is a classification problem. Since we are interested in prediction this is a predicting problem. 
+
+## 2
+- a:i
+- b:ii
+- c:iii
