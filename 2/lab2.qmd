@@ -1,0 +1,162 @@
+---
+title: "Lab 2"
+subtitle: ""
+author: "Thomas Haase"
+date: last-modified
+date-format: long
+ 
+execute:
+  warning: false
+  echo: true
+  error: false 
+ 
+format: 
+  pdf: 
+    toc: true
+    geometry:
+     - top=2cm
+     - left=2cm
+     - right=2cm
+     - bottom=3cm
+    fig-pos: 'h'
+    fig-cap-location: bottom
+    tbl-cap-location: bottom
+    include-in-header:
+    - text: |
+        \usepackage{placeins}
+number-sections: false
+#bibliography: citations.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+------------------------------------------------------------------------
+
+```{r}
+#| warning: false
+#| echo: false
+#| error: false
+#| output: false
+
+setwd("~/Github/ML-Labs/2")
+
+set.seed(2)
+
+
+library(data.table)
+
+```
+
+# Part 1: Social Network Ad Purchase
+
+In the first part of this lab, we will again consider the ad _purchase_ data that we used in lab 1 (containing
+information about individuals’ purchasing behavior under exposure to online ads). As in lab 1, we will build
+classification models to predict ad purchase (0/1) based on a set of covariates about individuals (including
+`Age`, `Gender` and `Salary`). In contrast to lab 1, we here focus on _non-parametric_ methods.
+
+1. Begin by importing the file “`Kaggle_Social_Network_Ads.csv`”. Format the outcome variable `Purchased` as a factor variable (this is required for the subsequent analysis using the caret package).
+You may also delete the `user_id` column, as it will not be used.
+
+```{r}
+data <- fread("Kaggle_Social_Network_Ads.csv")[, `:=`(
+  user_id = NULL,
+  Purchased = as.factor(Purchased)
+)]
+```
+
+
+2. The first non-parametric method you will use to predict ad purchase is the _k-nearest neighbors_ algorithm. As we talked about in the lecture, it has one key parameter, k, that the researcher must set. Use the `caret` package to implement a 10-fold cross-validation procedure that examines the test accuracy of _kNN_ under different choices of k (hint 1: set `method="knn"` to estimate a _kNN_ with caret hint 2: use the `tuneGrid` argument to specify your grid of _k_ values). Consider the following values of _k_: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50}. Because _kNN_ is sensitive to the scale of variables, we must standardize our variables prior to estimation (hint: you can add the following argument to `train(): preProcess=c("center","scale")`, to do so). From the results, plot the test accuracy against k (hint: results can be extracted from the train object by using `$results`). Interpret this plot. How does the performance—for the best _k_—compare to that of _GAM_ and _standard linear regression_ (i.e., your results in lab 1)? Which do you prefer? Why?
+
+```{r}
+tc <- caret::trainControl(method = "cv", number = 10)
+
+model_knn <- caret::train(Purchased ~ .,
+                          data = data,
+                          preProcess = c("center","scale"),
+                          tuneGrid = expand.grid(k = c(1:10,seq(15,25,5),50)),
+                          method = "knn",
+                          trControl = tc)
+
+
+ggplot(model_knn$results, aes(x = k, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = model_knn$results$k[which.max(model_knn$results$Accuracy)], 
+             color = "red") +
+  labs(title = "Accuracy of K-Nearest Neighbors model",
+       subtitle = "Trained with 10-fold cross-validation") +
+  scale_x_continuous(breaks = c(1:10,seq(15,25,5),50)) +
+  scale_y_continuous(breaks = seq(0.8,1,0.01)) +
+  theme_minimal()
+```
+
+The performance of the best predicting KNN model is 91%. This is as good as the best predicting GAM model with 90,5%. Both the GAM and KNN model have a higher accuracy than the linear model. Just like the GAM the KNN is able to fit nonlinear data really well, which sets them both apart from the linear model. 
+
+I prefer the GAM and the KNN over the linear model because of its better fit, and the GAM over the KNN because it offers better interpretability than the KNN. 
+
+
+
+3. Suppose we now learn that those who collected the data have retrieved some additional information (in the form of digital traces) about these 400 individuals. This extra information consists of 20 variables $X1 , X2, . . . , X20$ . The people providing us with the data suggest that _some_ of these variables could be very relevant for predicting `Purchase`, but they also note that many of them likely are irrelevant. The problem is, they do not know which is which. This new data set is stored in the .csv file “`Kaggle_Social_Network_Ads_Augmented.csv`”. Import it to R and process it the same way you did in #1.
+
+```{r}
+data <- fread("Kaggle_Social_Network_Ads_Augmented.csv")[, `:=`(
+  user_id = NULL,
+  Purchased = as.factor(Purchased)
+)]
+```
+
+
+4. Repeat task #2 for this new data set (from step #3). How does the prediction accuracy change? How
+do you explain this difference (or lack thereof)?
+
+```{r}
+tc <- caret::trainControl(method = "cv", number = 10)
+
+model_knn <- caret::train(Purchased ~ .,
+                          data = data,
+                          preProcess = c("center","scale"),
+                          tuneGrid = expand.grid(k = c(1:10,seq(15,25,5),50)),
+                          method = "knn",
+                          trControl = tc)
+
+
+ggplot(model_knn$results, aes(x = k, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = model_knn$results$k[which.max(model_knn$results$Accuracy)], 
+             color = "red") +
+  labs(title = "Accuracy of K-Nearest Neighbors model",
+       subtitle = "Trained with 10-fold cross-validation") +
+  scale_x_continuous(breaks = c(1:10,seq(15,25,5),50)) +
+  scale_y_continuous(breaks = seq(0,1,0.01)) +
+  theme_minimal()
+```
+
+The prediction accuracy drops quite recognizable to 78%. Since KNN does not weigh the features based on their predictiveness it is sensitive to the inclusion of unimportant features.  
+
+
+5. Motivated by the results obtained in #4, we want to explore an alternative method. Based on the
+properties—which we discussed in the lecture—of _decision trees_, do you think it has the potential to
+perform better than _kNN_ on the data set from #3? If yes, why?
+
+A decision tree should perform better since it captures novel interactions of the high amount of variables in the dataset. Thereby it could pick up latent constructs hidden in the variables. On the other hand decision trees are not very robust and only a small change in the data could lead to a large change in the tree structure. 
+
+
+6. Estimating decision trees is what you will do now. In R, we can use the package `rpart` for this. Decision trees have two main parameters that a researcher must choose prior to estimation: (_i_) the minimum number of observation in each leaf node (in `rpart: minbucket`), and (_ii_) the complexity parameter $\alpha$ (in `rpart: cp`). In practice, the former is often set heuristically (using some rule-of-thumb) and the latter using cross-validation. Please do the following:
+
+a. Answer why it generally is _not_ a good idea to set `minbucket` to either a _very large_ number or a very _small number_ (relative to the size of your data).
+
+b. Use the caret package (`method="rpart"`) to implement a 10-fold cross-validation procedure to assess how the test accuracy changes as a function of the complexity parameter (ISL: $\alpha$; `rpart: cp`). Hint: use the `tuneGrid` argument to specify your grid of _cp_ values. Consider the following values for _cp_: {0, 0.01, 0.025, 0.05, 0.10, 0.25, 0.5, 1.0}. (note: `minbucket` is here set to a default value=10). Plot the _test accuracy_ against _cp_ (hint: extract results as you did in #2 and #3). Interpret this plot. How does the accuracy for the best _cp_ compare to _kNN_? What do you attribute this difference to?
+
+c. Use the `rpart.plot` package to plot the decision tree you found to be the best in b (hint: you can extract the model with the highest accuracy from a `caret` model using `$finalModel`). First report how many _internal_ and _terminal_ nodes this tree has. Then, provide a interpretation. Does any of the “new” variables ($X_1 , . . . , X_20$ ) show up in the tree? 
+
+d. Use $caret’s varImp()$ function to calculate _variable importance_ scores. Interpret.
+
+
+
+
+
+
+
+
+
