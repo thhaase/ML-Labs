@@ -146,6 +146,9 @@ A decision tree should perform better since it captures novel interactions of th
 
 a. Answer why it generally is _not_ a good idea to set `minbucket` to either a _very large_ number or a very _small number_ (relative to the size of your data).
 
+As tree size (complexity) grows, training error always decreases, but test error first improves ($\downarrow$ bias) and then worsens ($\uparrow$ variance). A very large `minbucket` value will not allow the tree to reach its optimal size, the tree would be too biased. A very large `minbucket` value would lead to a tree with too high variance, basically overfitting the data.  
+
+
 b. Use the caret package (`method="rpart"`) to implement a 10-fold cross-validation procedure to assess how the test accuracy changes as a function of the complexity parameter (ISL: $\alpha$; `rpart: cp`). Hint: use the `tuneGrid` argument to specify your grid of _cp_ values. Consider the following values for _cp_: {0, 0.01, 0.025, 0.05, 0.10, 0.25, 0.5, 1.0}. (note: `minbucket` is here set to a default value=10). Plot the _test accuracy_ against _cp_ (hint: extract results as you did in #2 and #3). Interpret this plot. How does the accuracy for the best _cp_ compare to _kNN_? What do you attribute this difference to?
 
 c. Use the `rpart.plot` package to plot the decision tree you found to be the best in b (hint: you can extract the model with the highest accuracy from a `caret` model using `$finalModel`). First report how many _internal_ and _terminal_ nodes this tree has. Then, provide a interpretation. Does any of the “new” variables ($X_1 , . . . , X_20$ ) show up in the tree? 
