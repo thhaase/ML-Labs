@@ -24,6 +24,11 @@ format:
     include-in-header:
     - text: |
         \usepackage{placeins}
+        
+knitr:
+  opts_chunk:
+      fig.align: center
+      
 number-sections: false
 #bibliography: citations.bib
 editor_options: 
@@ -44,7 +49,10 @@ set.seed(2)
 
 
 library(data.table)
-
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(kableExtra)
 ```
 
 # Part 1: Social Network Ad Purchase
@@ -68,6 +76,10 @@ data <- fread("Kaggle_Social_Network_Ads.csv")[, `:=`(
 2. The first non-parametric method you will use to predict ad purchase is the _k-nearest neighbors_ algorithm. As we talked about in the lecture, it has one key parameter, k, that the researcher must set. Use the `caret` package to implement a 10-fold cross-validation procedure that examines the test accuracy of _kNN_ under different choices of k (hint 1: set `method="knn"` to estimate a _kNN_ with caret hint 2: use the `tuneGrid` argument to specify your grid of _k_ values). Consider the following values of _k_: {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50}. Because _kNN_ is sensitive to the scale of variables, we must standardize our variables prior to estimation (hint: you can add the following argument to `train(): preProcess=c("center","scale")`, to do so). From the results, plot the test accuracy against k (hint: results can be extracted from the train object by using `$results`). Interpret this plot. How does the performance—for the best _k_—compare to that of _GAM_ and _standard linear regression_ (i.e., your results in lab 1)? Which do you prefer? Why?
 
 ```{r}
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
 tc <- caret::trainControl(method = "cv", number = 10)
 
 model_knn <- caret::train(Purchased ~ .,
@@ -84,8 +96,9 @@ ggplot(model_knn$results, aes(x = k, y = Accuracy)) +
   geom_vline(xintercept = model_knn$results$k[which.max(model_knn$results$Accuracy)], 
              color = "red") +
   labs(title = "Accuracy of K-Nearest Neighbors model",
-       subtitle = "Trained with 10-fold cross-validation") +
-  scale_x_continuous(breaks = c(1:10,seq(15,25,5),50)) +
+       subtitle = "Trained with 10-fold cross-validation",
+       x = "Log10(k)") +
+  scale_x_log10(breaks = c(1:10,seq(15,25,5),50)) +
   scale_y_continuous(breaks = seq(0.8,1,0.01)) +
   theme_minimal()
 ```
@@ -110,6 +123,10 @@ data <- fread("Kaggle_Social_Network_Ads_Augmented.csv")[, `:=`(
 do you explain this difference (or lack thereof)?
 
 ```{r}
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
 tc <- caret::trainControl(method = "cv", number = 10)
 
 model_knn <- caret::train(Purchased ~ .,
@@ -126,8 +143,9 @@ ggplot(model_knn$results, aes(x = k, y = Accuracy)) +
   geom_vline(xintercept = model_knn$results$k[which.max(model_knn$results$Accuracy)], 
              color = "red") +
   labs(title = "Accuracy of K-Nearest Neighbors model",
-       subtitle = "Trained with 10-fold cross-validation") +
-  scale_x_continuous(breaks = c(1:10,seq(15,25,5),50)) +
+       subtitle = "Trained with 10-fold cross-validation",
+       x = "Log10(k)") +
+  scale_x_log10(breaks = c(1:10,seq(15,25,5),50)) +
   scale_y_continuous(breaks = seq(0,1,0.01)) +
   theme_minimal()
 ```
@@ -151,15 +169,200 @@ As tree size (complexity) grows, training error always decreases, but test error
 
 b. Use the caret package (`method="rpart"`) to implement a 10-fold cross-validation procedure to assess how the test accuracy changes as a function of the complexity parameter (ISL: $\alpha$; `rpart: cp`). Hint: use the `tuneGrid` argument to specify your grid of _cp_ values. Consider the following values for _cp_: {0, 0.01, 0.025, 0.05, 0.10, 0.25, 0.5, 1.0}. (note: `minbucket` is here set to a default value=10). Plot the _test accuracy_ against _cp_ (hint: extract results as you did in #2 and #3). Interpret this plot. How does the accuracy for the best _cp_ compare to _kNN_? What do you attribute this difference to?
 
+```{r}
+model_tree <- caret::train(Purchased ~ .,
+                           data = data,
+                           tuneGrid = expand.grid(cp = c(0, 0.01, 0.025, 0.05,
+                                                         0.10, 0.25, 0.5, 1)),
+                           control = rpart.control(minbucket = 10),
+                           method = "rpart",
+                           trControl = tc)
+
+model_tree$results[,c("cp", "Accuracy", "AccuracySD")] |> round(3) |> kable()
+```
+
+```{r}
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
+model_tree$results[,c("cp", "Accuracy")] |> 
+  round(3) |>
+  plot(type = "b", bty = "n", pch = 20, cex = 1.5, las = 1,
+       xlab = "Complexity Parameter Alpha",
+       main = "Accuracy of Decision Tree")
+  box("plot", bty = "l", lwd = 2) 
+  abline(v = model_tree$results$cp[which.max(model_tree$results$Accuracy)], col = "red", lty = 2)
+```
+
+A higher complexity parameter $\alpha$ is overall related to a lower accuracy. Mathematically $\alpha$ is controlling the punishment of the amount of splits made/terminal leafs existing: 
+$$
+\underbrace{\sum_{j}^{J} \sum_{i \in R_j} (y_i - \bar{y}_{R_j})^2}_{\text{Summed error across leaves}}
+	\;+\;
+	\underbrace{\alpha \ast |T_0|}_{\text{Penalty}}
+$$  
+
+This punishment is called "tree pruning". The effectiveness of the punishment is displayed by the plot: the more the tree is punished the less it can accuratly learn the underlying relations of the data. 
+
+The accuracy of the best predicting tree is `{r} model_tree$results$Accuracy |> max() |> round(2)`. It is much higher than the accuracy of the KNN Model. The KNN is sensitive to inclusion of unimportant features, but the tree is indirectly ranking variables for making the best predictive splits. Additionally this allows the tree to pick up inductivly on important interactions. The large amount of variables is fantastic for that.  
+
 c. Use the `rpart.plot` package to plot the decision tree you found to be the best in b (hint: you can extract the model with the highest accuracy from a `caret` model using `$finalModel`). First report how many _internal_ and _terminal_ nodes this tree has. Then, provide a interpretation. Does any of the “new” variables ($X_1 , . . . , X_20$ ) show up in the tree? 
+
+```{r}
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
+rpart.plot(model_tree$finalModel)
+```
+
+Age is the strongest first split. Younger persons ($< 43$) are less likely to purchase (especially if salary is lower). Older persons ($\geq 43) tend to purchase, unless X3 is very small. Among the younger group the salary is the main decider: If the salary is greater or equal 90,000 the chance of purchasing increases. Within this subgroup, high values of X7 (≥ 0.82) almost guarantee class 1. New variables are definitly showing up at the bottom of the tree. 
+
+
+
 
 d. Use $caret’s varImp()$ function to calculate _variable importance_ scores. Interpret.
 
+```{r}
+#| fig.align: center
+#| fig-width: 10
+#| fig-height: 4
+
+varimp <- data.table(var = rownames(caret::varImp(model_tree$finalModel)),
+           imp = caret::varImp(model_tree$finalModel)$Overall)[order(imp,decreasing = T)]
+
+varimp[,imp := imp / max(imp)] |> 
+ggplot(aes(y=reorder(var, imp),x=imp)) + 
+  geom_segment(aes(x = 0, xend = imp,
+                   y = var, yend = var),
+               color = "#333333") +
+  geom_point(size=3) + 
+  labs(title = "Variable Importance",
+       subtitle = "Best fitting decision tree",
+       x = "Relative Variable Importance",
+       y = "Variables") +
+  theme_minimal()
+```
+
+The variable Importance scores are calculated by tabulating the reduction in the loss function (e.g. mean squared error) attributed to each variable at each split and the sum is returned. The prediction if someone is a customer is mostly driven by 4 variables: Salary, age, X3 and X7. The most important variable for predicting if a person is a customer is their salary. After that Age and X3 play an important role aswell. lastly X7 aswell as X18, X17 and X13 play a role in the prediction too, most likely through interaction effects.   
+
+
+# Part 2: Bernie Sanders and Donald Trump tweets (cont.)
+
+In the second part of this lab, we will reconsider the _Bernie vs. Trump_ twitter data set that we used in lab 1. As in lab 1, we shall build classification models to predict who authored a given tweet based on its linguistic content, and to identify which words are the most discriminative between Bernie and Trump.
+
+1. Import the file “`trumpbernie2.csv`” to R (note: to reduce computational time, I have reduced the number of columns for this lab), and format the outcome variable trump_tweet as a factor variable (again, this is needed for the `caret` package to recognize it as a _discrete_ variable.)
+
+```{r}
+rm(list = ls()) 
+
+data <- fread("trumpbernie2.csv")[, `:=`(
+  trump_tweet = as.factor(trump_tweet)
+)]
+```
+
+Use caret to implement a 5-fold cross-validation procedure that estimates the _test error_ for a _decision tree_ with different `cp` ($\mathrm{ISL}: \alpha$) values. Consider the following `cp` values: {0, 0.001, 0.01, 0.1, 0.25}. Report the accuracy of the best configuration. How does this compare to the performance of a standard logistic regression (LR) and a ridge regression (RR)? You do not need to estimate the LR and the RR yourself — I provide their performance here: $\text{Accuracy}(LR) = 55\%$. $\text{Accuracy}(RR) = 86\%$. Why do think this is the case? Doing the following two things might help you answer this question:
+
+```{r}
+set.seed(2025)
+model_tree <- caret::train(trump_tweet ~ .,
+                           data = data,
+                           method = "rpart",
+                           tuneGrid  = expand.grid(cp = c(0, 0.001, 0.01, 0.1, 0.25)),
+                           control   = rpart.control(minbucket = 10),
+                           trControl = trainControl(method = "cv", number = 5))
+
+model_tree$results[,c("cp", "Accuracy", "AccuracySD")] |> round(3) |> kable()
+```
+
+The best configuration reached an accuracy of `{r} model_tree$results$Accuracy |> max() |> round(3)`. This is a higher accuracy than the standard logistic regression model reached, but less than the ridge regression.  
+
+The dataset is high dimensional. High dimensional data includes a few important signal variables and a high number of noise variables. Since decision trees use recursive binary splitting to grow, they can not make a distinction between variables that carry the signal and which are not affecting the data in a meaningful way. The result is an overfit decisiontree, that is highly variable does not perform well outside of the training dataset.
+
+Ridgeregression uses regularization to tune the noise in the data down. This way it can focus the signal and reach a better accuracy
+
+
+a. Plot the tree which achieved the highest test accuracy (hint: again, you can extract the best model using `$finalModel`, and plot it using `rpart.plot`). Is it a big or a small tree?
+
+```{r}
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
+rpart.plot(model_tree$finalModel)
+```
+
+The tree is very big. 
+
+
+b. Calculate variable importance. How many variables have non-zero values?
+
+```{r}
+#| fig.align: center
+#| fig-width: 9
+#| fig-height: 6
+
+varimp <- data.table(var = rownames(caret::varImp(model_tree$finalModel)),
+                     imp = caret::varImp(model_tree$finalModel)$Overall)[imp != 0][order(imp,decreasing = T)]
+
+varimp[,imp := imp / max(imp)][, var := sub("_freq$", "", var)] |> 
+ggplot(aes(y=reorder(var, imp),x=imp)) + 
+  geom_segment(aes(x = 0, xend = imp,
+                   y = var, yend = var),
+               color = "#333333") +
+  geom_point(size=3) + 
+  labs(title = "Variable Importance",
+       subtitle = "Best fitting decision tree",
+       x = "Relative Variable Importance",
+       y = "Variables") +
+  theme_minimal()
+```
+
+`{r} nrow(varimp)` Variables/Terms have non-zero values. 
+
+3. Given the results in #2, we want to explore other alternative methods. Using once again the `caret` package, you shall now implement a 5-fold cross-validation procedure that fits a random forest model(`method="rf"`) with different `mtry` values. `mtry` controls the number of variables that are considered at each split (corresponding to parameter `m` in ISL). Specifically, you shall consider the following values for `mtry`: {1, 5, 10, 25, 50, 200} (hint: again, you specify this grid using the argument tuneGrid). Another important parameter of random forest models is the number of trees to use. Here you shall use 200 (hint: you may enter ntree=200 as an argument in train() to do so). The estimation may take a couple of minutes to finish. Once it has finished, please do the following: 
+
+```{r}
+if(!file.exists("model_forest.rds")){
+  set.seed(2025)
+  model_forest <- caret::train(trump_tweet ~ .,
+                               data = data,
+                               method = "rf",
+                               ntree = 200,
+                               tuneGrid  = expand.grid(mtry = c(1, 5, 10, 25, 50, 200)),
+                               trControl = trainControl(method = "cv", number = 5)) 
+  saveRDS(model_forest, file = "model_forest.rds")
+} else {
+  model_forest <- readRDS("model_forest.rds")
+}
+
+
+model_forest$results[,c("mtry", "Accuracy", "AccuracySD")] |> round(3) |> kable()
+```
+
+
+a. Plot accuracy against mtry. Interpret this plot. Does decorrelating the trees seem to help performance?
+
+```{r}
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
+model_forest$results[,c("mtry", "Accuracy")] |> 
+  round(3) |> 
+  plot(type = "b", bty = "n", pch = 20, cex = 1.5, las = 1,
+       log = "x",
+       xlab = "Log(mtry)\nNumber of Variables considered for each tree",
+       main = "Accuracy of Random Forest")
+  box("plot", bty = "l", lwd = 2) 
+  abline(v = model_forest$results$mtry[which.max(model_forest$results$Accuracy)], col = "red", lty = 2)
+```
+
+Random forest is an improvement of bagged trees. Bagged trees is a method where multiple trees are fit, each one to a bootstrapped version of the original dataset. In the end the mean of the trees is used as $\hat{y}$. Each tree is deep (unpruned) and the method tries to reduce variance of a single decisiontree by averaging multiple. Sadly the trees are still highly correlated, because they use the same variables and fall victim to the same noise of high dimensional data. Random forest improves this by limiting the amount of variables used to fit each tree. This decorrelates the trees by prohibiting the most important variables to dominate most trees. Imposing these restrictions weakens the individual trees, but strengthens the pooling. Limiting the number of considered variables for each split to 5 leads to the highest accuracy. Only fitting stumps still reaches an accuracy of `{r} model_forest$results$Accuracy[which(model_forest$results$mtry == 1)] |> round(2)`.  Stumps are not able to capture interactions like medium and taller trees can. Therefore increasing mtry to 5 yields in such a higher improvement of the accuracy. From there the more variables are considered, the more noise finds its way into the model leading it to overfit.  
+
+
+b. Relate the performance of the best random forest model to the best decision tree model. Do you find a meaningful improvement using random forest? Why do you think that is (or isn’t)? Examining the variable importance scores may provide some clues; how many non-zero variables do you find for the random forest?
 
 
 
-
-
-
-
-
+in random forest this noise is averaged out -> the noise variables have still a little weight 
