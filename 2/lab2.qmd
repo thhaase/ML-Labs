@@ -235,7 +235,8 @@ varimp[,imp := imp / max(imp)] |>
 ggplot(aes(y=reorder(var, imp),x=imp)) + 
   geom_segment(aes(x = 0, xend = imp,
                    y = var, yend = var),
-               color = "#333333") +
+               color = "#333333",
+               linewidth = 1) +
   geom_point(size=3) + 
   labs(title = "Variable Importance",
        subtitle = "Best fitting decision tree",
@@ -309,10 +310,11 @@ varimp[,imp := imp / max(imp)][, var := sub("_freq$", "", var)] |>
 ggplot(aes(y=reorder(var, imp),x=imp)) + 
   geom_segment(aes(x = 0, xend = imp,
                    y = var, yend = var),
-               color = "#333333") +
+               color = "#333333",
+               linewidth = 1) +
   geom_point(size=3) + 
   labs(title = "Variable Importance",
-       subtitle = "Best fitting decision tree",
+       subtitle = "Best Fitting Decision Tree",
        x = "Relative Variable Importance",
        y = "Variables") +
   theme_minimal()
@@ -363,6 +365,124 @@ Random forest is an improvement of bagged trees. Bagged trees is a method where 
 
 b. Relate the performance of the best random forest model to the best decision tree model. Do you find a meaningful improvement using random forest? Why do you think that is (or isn’t)? Examining the variable importance scores may provide some clues; how many non-zero variables do you find for the random forest?
 
+The best predicting random forest model had an accuracy of $\sim90\%$, while the best predicting decision tree had an accuracy of $\sim77\%$. 
+
+```{r}
+data.table(var = rownames(caret::varImp(model_forest$finalModel)),
+           imp = caret::varImp(model_forest$finalModel)$Overall)[, imp := imp / max(imp)][order(-imp)][, rank := .I] |>
+  ggplot(aes(x = rank, y = imp)) +
+  geom_line(linewidth = 0.5) +
+  labs(title = "Variable Importance Curve",
+       subtitle = "Best Fitting Random Forest Model",
+       x = "Rank of Variable Importance",
+       y = "Relative Variable Importance") +
+  theme_minimal()
+```
+
+When investigating the variables closer no variable is exactly weighted with 0, but most of the variables are weighted with less than 10%. The random forest is averaging out the noise by taking the mean of all trees. The noise variables still have a little bit of weight, but are less influential in mass. 
 
 
-in random forest this noise is averaged out -> the noise variables have still a little weight 
+c. Relate the performance of the best random forest model and the ridge regression from #2. What do you think this difference indicates about the data, and more specifically the relation ship between X and y?
+
+The best random forest model had an accuracy of $\sim 90\%$, while the best ridge regression had $\sim86\%$ accuracy. Ridge regression is also able to focus the signal in high dimensional data, but it can not capture complex interaction like the random forest model can. This seems to give the random forest model an edge when predicting.
+
+
+d. Consider the variable importance scores in a bit more detail: does the variables that appear in the top 20 align with your expectations? Note that variable importance does not reveal the direction; e.g., whether a certain word is associated with Trump or with Bernie. For this, we can use the randomForest’s function plotPartial() which produces a partial dependence plot for a variable of choice. Select three variables (words) which you find interesting, and create three separate partial dependency plot. In order to interpret the y-axis of the plot, use the argument which.class to specify which class (“0” or “1”) should represent the positive class.
+
+
+```{r}
+#| fig.align: center
+#| fig-width: 10
+#| fig-height: 4
+
+varimp <- data.table(var = rownames(caret::varImp(model_forest$finalModel)),
+           imp = caret::varImp(model_forest$finalModel)$Overall)[order(imp,decreasing = T)]
+
+varimp[,imp := imp / max(imp)][1:20][, var := sub("_freq$", "", var)]|> 
+ggplot(aes(y=reorder(var, imp),x=imp)) + 
+  geom_segment(aes(x = 0, xend = imp,
+                   y = var, yend = var),
+               color = "#333333",
+               linewidth = 1) +
+  geom_point(size=3) + 
+  labs(title = "Variable Importance",
+       subtitle = "Best Fitting Random Forest Model",
+       x = "Relative Variable Importance",
+       y = "Variables") +
+  theme_minimal()
+```
+
+```{r}
+#| fig.align: center
+#| fig-width: 6
+#| fig-height: 4
+#| layout-ncol: 2
+
+randomForest::partialPlot(model_forest$finalModel, 
+                          pred.data=data, x.var="great_freq")
+randomForest::partialPlot(model_forest$finalModel, 
+                          pred.data=data, x.var="border_freq")
+randomForest::partialPlot(model_forest$finalModel, 
+                          pred.data=data, x.var="corpor_freq")
+randomForest::partialPlot(model_forest$finalModel, 
+                          pred.data=data, x.var="billionair_freq")
+```
+
+The partial dependency plots display piecewise linear functions. When the word reaches appearence of `1.0` is the prediction platos at a binary level. For example once the word "great" appears once the predicted value reaches -0.3. The partial dependency plot shows that the predicted value are positive or negative. This way it is possible to see if an occuring word leads to an increase or decrease in predicted probability - one stands for bernie, one for trump. We can see that trump likes to use wordstems like "great" and "border", while bernie likes to use wordstems like "corpor" and "billionair".
+
+
+\newpage
+# Quiz Wrap Up
+
+Provided here are three optional wrap-up questions that help recap some central ideas from the lecture, and which are taken from old exams.
+
+**1. For which of the following supervised learning methods does standardizing your input data (X) influence the predictions?**
+
+a. Decision tree
+  - no, optimal cut are about variance which stay the same in relation
+  
+b. Lasso
+  - yes, because its standard OLS which is trivial
+
+c. kNN
+  - no, samme argument as decision tree
+  
+d. Standard OLS
+  - yes, trivial
+
+
+
+
+**2. Which among the following are important aspects distinguishing parametric and non-parametric supervised learning models?**
+
+a. Non-parametric methods make strong assumptions about the functional form of models; para-
+metric methods do not.
+  - Wrong
+  
+b. Parametric methods make strong assumptions about the functional form of models; non-
+parametric methods do not.
+  - True
+
+c. Parametric methods are generally more appropriate for inference tasks compared to non-
+parametric methods.
+  - True
+
+d. Non-parametric methods are generally more appropriate for inference tasks compared to para-
+metric methods.
+  - Wrong
+
+
+
+**3. In terms of the bias-variance decomposition, a decision tree with 20 leaves tends to have __________ than a decision tree with 3 leaves.**
+
+a. higher variance and lower bias.
+  - true
+b. higher variance and higher bias.
+  - wrong
+c. lower variance and lower bias.
+  - wrong
+d. lower variance and higher bias.
+  - wrong
+
+
+
