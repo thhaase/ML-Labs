@@ -538,15 +538,62 @@ tuner_hyperband$optimize(instance)
 
 instance$result  # what is the best configuration
 # 0.8893881 accuracy -> just slightly worse than the random forest
-
-
-
-
-tuner_hyperband = tnr("hyperband", eta = 3) # eta specifies how strong the multi armed bandit reduction in budget will be. 2 is very careful, 4,5,6 are very high cutoff
-
-
 ```
 
+```{r}
+#| execute: false
+#| eval: false
+
+data <- fread("Kaggle_Social_Network_Ads_Augmented.csv")[, `:=`(
+  user_id = NULL,
+  Purchased = as.factor(Purchased),
+  Gender = as.factor(Gender),
+  Age = as.numeric(Age)
+)] 
+
+tsk = data |> as_task_classif(target = "Purchased")
+
+lrn = lrn("classif.catboost", logging_level = "Silent") |> set_threads(n = 3)
+
+rsmp = rsmp("cv", folds = 5)
+
+
+search_space = ps(
+  iterations     = p_int(lower = 100, upper = 1000, tags = "budget"),
+  learning_rate  = p_dbl(lower = 0.01, upper = 0.3),
+  depth          = p_int(lower = 3, upper = 10)
+)
+
+
+terminator = trm("none")
+
+instance = TuningInstanceSingleCrit$new(
+  task           = tsk,
+  learner        = lrn,
+  resampling     = rsmp,
+  measure        = msr("classif.acc"),
+  search_space   = search_space,
+  terminator     = terminator
+)
+
+tuner_hyperband$optimize(instance)
+
+instance$result  # what is the best configuration
+instance$archive$data
+
+
+# train final model
+lrn$param_set$values = instance$result_learner_param_vals
+
+lrn$train(tsk)
+
+lrn$importance()[1:10] |> kable()
+
+barplot(sort(lrn$importance(), decreasing = T),
+        las = 2, horiz = F, col = "steelblue",
+        main = "Variable Importance",
+        ylab = "Importance")
+```
 
 
 
