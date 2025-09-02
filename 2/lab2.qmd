@@ -103,7 +103,8 @@ ggplot(model_knn$results, aes(x = k, y = Accuracy)) +
   theme_minimal()
 ```
 
-The performance of the best predicting KNN model is 91%. This is as good as the best predicting GAM model with 90,5%. Both the GAM and KNN model have a higher accuracy than the linear model. Just like the GAM the KNN is able to fit nonlinear data really well, which sets them both apart from the linear model. 
+The performance of the best predicting KNN model is 91%. Small values of k probably underfit the data and too high values overfit the data. 
+This is as good as the best predicting GAM model with 90,5%. Both the GAM and KNN model have a higher accuracy than the linear model. Just like the GAM the KNN is able to fit nonlinear data really well, which sets them both apart from the linear model. 
 
 I prefer the GAM and the KNN over the linear model because of its better fit, and the GAM over the KNN because it offers better interpretability than the KNN. 
 
@@ -170,11 +171,13 @@ As tree size (complexity) grows, training error always decreases, but test error
 b. Use the caret package (`method="rpart"`) to implement a 10-fold cross-validation procedure to assess how the test accuracy changes as a function of the complexity parameter (ISL: $\alpha$; `rpart: cp`). Hint: use the `tuneGrid` argument to specify your grid of _cp_ values. Consider the following values for _cp_: {0, 0.01, 0.025, 0.05, 0.10, 0.25, 0.5, 1.0}. (note: `minbucket` is here set to a default value=10). Plot the _test accuracy_ against _cp_ (hint: extract results as you did in #2 and #3). Interpret this plot. How does the accuracy for the best _cp_ compare to _kNN_? What do you attribute this difference to?
 
 ```{r}
+set.seed(12345)
 model_tree <- caret::train(Purchased ~ .,
                            data = data,
                            tuneGrid = expand.grid(cp = c(0, 0.01, 0.025, 0.05,
                                                          0.10, 0.25, 0.5, 1)),
                            control = rpart.control(minbucket = 10),
+                           #preProcess = "scale",
                            method = "rpart",
                            trControl = tc)
 
@@ -216,6 +219,7 @@ c. Use the `rpart.plot` package to plot the decision tree you found to be the be
 rpart.plot(model_tree$finalModel)
 ```
 
+The tree has 4 internal leafs and 5 terminal leafs. 
 Age is the strongest first split. Younger persons ($< 43$) are less likely to purchase (especially if salary is lower). Older persons ($\geq 43) tend to purchase, unless X3 is very small. Among the younger group the salary is the main decider: If the salary is greater or equal 90,000 the chance of purchasing increases. Within this subgroup, high values of X7 (≥ 0.82) almost guarantee class 1. New variables are definitly showing up at the bottom of the tree. 
 
 
@@ -245,7 +249,7 @@ ggplot(aes(y=reorder(var, imp),x=imp)) +
   theme_minimal()
 ```
 
-The variable Importance scores are calculated by tabulating the reduction in the loss function (e.g. mean squared error) attributed to each variable at each split and the sum is returned. The prediction if someone is a customer is mostly driven by 4 variables: Salary, age, X3 and X7. The most important variable for predicting if a person is a customer is their salary. After that Age and X3 play an important role aswell. lastly X7 aswell as X18, X17 and X13 play a role in the prediction too, most likely through interaction effects.   
+The variable importance scores are calculated by tabulating the reduction in the loss function (e.g. mean squared error) attributed to each variable at each split and the sum is returned. The prediction if someone is a customer is mostly driven by 4 variables: Salary, age, X3 and X7. The most important variable for predicting if a person is a customer is their salary. After that Age and X3 play an important role aswell. lastly X7 aswell as X18, X17 and X13 play a role in the prediction too, most likely through interaction effects.   
 
 
 # Part 2: Bernie Sanders and Donald Trump tweets (cont.)
@@ -293,7 +297,7 @@ a. Plot the tree which achieved the highest test accuracy (hint: again, you can 
 rpart.plot(model_tree$finalModel)
 ```
 
-The tree is very big. 
+The tree is very big (good for environment 🌳).
 
 
 b. Calculate variable importance. How many variables have non-zero values?
@@ -379,12 +383,12 @@ data.table(var = rownames(caret::varImp(model_forest$finalModel)),
   theme_minimal()
 ```
 
-When investigating the variables closer no variable is exactly weighted with 0, but most of the variables are weighted with less than 10%. The random forest is averaging out the noise by taking the mean of all trees. The noise variables still have a little bit of weight, but are less influential in mass. 
+When investigating the variables closer no variable is exactly weighted with 0, but most of the variables are weighted with less than 10%. The random forest is averaging out the noise (decorrelating) by taking the mean of all trees. The noise variables still have a little bit of weight, but are less influential in mass. 
 
 
 c. Relate the performance of the best random forest model and the ridge regression from #2. What do you think this difference indicates about the data, and more specifically the relation ship between X and y?
 
-The best random forest model had an accuracy of $\sim 90\%$, while the best ridge regression had $\sim86\%$ accuracy. Ridge regression is also able to focus the signal in high dimensional data, but it can not capture complex interaction like the random forest model can. This seems to give the random forest model an edge when predicting.
+The best random forest model had an accuracy of $\sim 90\%$, while the best ridge regression had $\sim86\%$ accuracy. Ridge regression is also able to focus the signal in high dimensional data, but it can not capture complex interactions of nonlinear data like the random forest model can. This seems to give the random forest model an edge when predicting.
 
 
 d. Consider the variable importance scores in a bit more detail: does the variables that appear in the top 20 align with your expectations? Note that variable importance does not reveal the direction; e.g., whether a certain word is associated with Trump or with Bernie. For this, we can use the randomForest’s function plotPartial() which produces a partial dependence plot for a variable of choice. Select three variables (words) which you find interesting, and create three separate partial dependency plot. In order to interpret the y-axis of the plot, use the argument which.class to specify which class (“0” or “1”) should represent the positive class.
@@ -418,13 +422,13 @@ ggplot(aes(y=reorder(var, imp),x=imp)) +
 #| fig-height: 4
 #| layout-ncol: 2
 
-randomForest::partialPlot(model_forest$finalModel, 
+randomForest::partialPlot(model_forest$finalModel, which.class = "0",
                           pred.data=data, x.var="great_freq")
-randomForest::partialPlot(model_forest$finalModel, 
+randomForest::partialPlot(model_forest$finalModel, which.class = "0",
                           pred.data=data, x.var="border_freq")
-randomForest::partialPlot(model_forest$finalModel, 
+randomForest::partialPlot(model_forest$finalModel, which.class = "0",
                           pred.data=data, x.var="corpor_freq")
-randomForest::partialPlot(model_forest$finalModel, 
+randomForest::partialPlot(model_forest$finalModel, which.class = "0",
                           pred.data=data, x.var="billionair_freq")
 ```
 
@@ -483,6 +487,66 @@ c. lower variance and lower bias.
   - wrong
 d. lower variance and higher bias.
   - wrong
+
+
+\newpage
+# EXTRA STUFF - mlr3 boosting
+```{r}
+#| execute: false
+#| eval: false
+# remotes::install_github('catboost/catboost', subdir = 'catboost/R-package')
+# pak::pak("mlr-org/mlr3extralearners")
+library(mlr3)
+library(mlr3extralearners)
+library(mlr3tuning)
+library(mlr3hyperband)
+library(catboost) # catboost performs well with categories more: https://aravindkolli.medium.com/understanding-catboost-the-gradient-boosting-algorithm-for-categorical-data-73ddb200895d
+
+# NOTES ON HYPERPARAMETER OPTIMIZATION
+# hyperband for quick and dirty, TunerMBO (bayesian model estimated to suggest new search parameters) for fine accurate tuning
+
+
+tsk = as_task_classif(data[, (names(data)[sapply(data, is.integer)]) :=
+                             lapply(.SD, as.numeric),
+                           .SDcols = names(data)[sapply(data, is.integer)]],
+                      target = "trump_tweet")
+
+lrn = lrn("classif.catboost", logging_level = "Silent")
+
+rsmp = rsmp("cv", folds = 5)
+
+
+search_space = ps(
+  iterations     = p_int(lower = 100, upper = 1000, tags = "budget"),
+  learning_rate  = p_dbl(lower = 0.01, upper = 0.3),
+  depth          = p_int(lower = 3, upper = 10)
+)
+
+
+terminator = trm("none")
+
+instance = TuningInstanceSingleCrit$new(
+  task           = tsk,
+  learner        = lrn,
+  resampling     = rsmp,
+  measure        = msr("classif.acc"),
+  search_space   = search_space,
+  terminator     = terminator
+)
+
+tuner_hyperband$optimize(instance)
+
+instance$result  # what is the best configuration
+# 0.8893881 accuracy -> just slightly worse than the random forest
+
+
+
+
+tuner_hyperband = tnr("hyperband", eta = 3) # eta specifies how strong the multi armed bandit reduction in budget will be. 2 is very careful, 4,5,6 are very high cutoff
+
+
+```
+
 
 
 
