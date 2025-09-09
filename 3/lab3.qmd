@@ -1,0 +1,500 @@
+---
+title: "Lab 3"
+subtitle: ""
+author: "Thomas Haase"
+date: last-modified
+date-format: long
+ 
+execute:
+  warning: false
+  echo: true
+  error: false 
+format: 
+  pdf: 
+    toc: true
+    geometry:
+     - top=2cm
+     - left=2cm
+     - right=2cm
+     - bottom=3cm
+    fig-pos: 'h'
+    fig-cap-location: bottom
+    tbl-cap-location: bottom
+    include-in-header:
+    - text: |
+        \usepackage{placeins}
+        
+knitr:
+  opts_chunk:
+      
+      fig.align: center
+number-sections: false
+#bibliography: citations.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+
+# Part 1: Salary prediction
+
+In the first part of this lab, we will work with a dataset (adults) containing information about a sample of US individuals’ salaries as well as a handful sociodemographic variables. We will also consider an augmented version of this dataset (adults_aug), combining the original data with (simulated) highly nuanced lifecourse information. With this, the objective is to explore how accurately we can predict the salaries of individuals, comparing neural networks with other methods from previous weeks.
+
+```{r}
+library(keras)
+library(keras3)
+library(tensorflow)
+
+library(kableExtra)
+library(tibble)
+
+# set wd dynamically through Rstudio API
+rstudioapi::getSourceEditorContext()$path |> 
+  dirname() |>
+  setwd()
+
+set.seed(42)
+```
+
+1. Begin by importing adults.rds and partition the data into a training and test set. We will use the training set to fit our model, and the test set to assess accuracy and compare across models. The dataset contains cirka 50,000 individuals, and for each we have information about five traditional variables (age, education, hours worked per week, capital gain and capital loss). We are reasonably sure there are no complex interactions or non-linearities. With this as the background, do you believe a neural network model is likely to excel on this dataset? Why/why not?
+
+```{r}
+d_adults <- readRDS("adults.rds")
+
+
+idx <- sample(seq_len(nrow(d_adults)), 
+              size = floor(0.8 * nrow(d_adults)))
+d_adults_train <- d_adults[idx, ]
+d_adults_test  <- d_adults[-idx, ]
+```
+
+> I expect a neural network to be as good as logistic regression, because a neural network is particularly good at detecting complex interactions. But if a neural network is only fit to a simple dataset, it will not be able to make use of its core strength and basically regress to becoming a logistic regression or completely overfit. 
+
+# FINISH THIS ANE MAKE MORE BEUTIFUL
+
+2. Begin with estimating a standard logistic regression model to the training set you just created. Hint: you may use the glm(. . . , family=’binomial’) function to estimate a standard logistic regression model. When estimation has finished, use the predict() function to predict the outcome on the test dataset, and calculate (report) the accuracy.
+
+```{r}
+model_glm <- glm(y ~ .,
+           data = d_adults_train |> as.data.frame(),
+           family = "binomial")
+
+predictions_glm <- cbind(d_adults_test |> as.data.frame(),
+                         predictions = ifelse(
+                           predict(model_glm, as.data.frame(d_adults_test), 
+                                   type = "response") >= 0.5, 
+                           1, 0))
+
+accuracy_glm <- (sum(predictions_glm$predictions == predictions_glm$y)/nrow(predictions_glm)) |> round(3)
+```
+
+> The accuracy of the glm is `{r} accuracy_glm`.
+
+
+3. Estimate a neural network with 1 hidden layer and 5 hidden units. In the compile() function, set the optimizer to optimizer_adam(), the loss function equal to ”binary_crossentropy” (as the outcome is binary), and metrics to ”accuracy”. Report the accuracy. Did the result match your expectations formulated in #1?
+
+```{r}
+k_clear_session()
+
+model_nn <- keras_model_sequential() |>
+  # hidden layer
+  layer_dense(units = 5, activation = "relu") |>
+  # output layer for binary classification:
+  layer_dense(units = 1, activation = "sigmoid")
+
+model_nn |>
+  compile(
+    optimizer = optimizer_adam(1e-3),   # optimizer/learning rate
+    loss = "binary_crossentropy",
+    metrics = "accuracy"
+  )
+
+history_nn <- model_nn |>
+  fit(
+    x = subset(d_adults_train, select = -y), 
+    y = d_adults_train[,"y"],
+    epochs = 25,
+    batch_size = 32,
+    validation_split = 0.2,
+    verbose = 0
+  )
+
+predictions_nn <- as.numeric(model_nn |> predict(subset(d_adults_test, select = -y)))
+accuracy_nn <- (sum(ifelse(predictions_nn >= 0.5,1,0) == d_adults_test[,"y"])/nrow(d_adults_test)) |> round(3)
+```
+
+> The accuracy of the neural network is `{r} accuracy_nn`. As expected the accuracy of the neural network is only as good as the accuracy of the logistic regression. 
+
+
+4. Next, you shall estimate a considerably more complex neural network, containing 4 hidden layers. The first hidden layer should have 256 hidden units, the second hidden layer 128 hidden units, the third hidden layer 64 hidden units, and the fourth hidden layer 32 hidden units. Use the same settings for compile() as in #3. Report the total number of parameters and then estimate the model. Do you find that it outperforms #3 meaningfully? Why do you think this is (or is not) the case?
+
+```{r}
+k_clear_session()
+
+model_nn.2 <- keras_model_sequential() |>
+  # hidden layers
+  layer_dense(units = 256, activation = "relu") |>
+  layer_dense(units = 128, activation = "relu") |>
+  layer_dense(units = 64, activation = "relu") |>
+  layer_dense(units = 32, activation = "relu") |>
+  # output layer for binary classification:
+  layer_dense(units = 1, activation = "sigmoid")
+
+model_nn.2 |>
+  compile(
+    optimizer = optimizer_adam(1e-3),   # optimizer/learning rate
+    loss = "binary_crossentropy",
+    metrics = "accuracy"
+  )
+
+history_nn <- model_nn.2 |>
+  fit(
+    x = subset(d_adults_train, select = -y), 
+    y = d_adults_train[,"y"],
+    epochs = 25,
+    batch_size = 32,
+    validation_split = 0.2,
+    verbose = 0
+  )
+
+predictions_nn.2 <- as.numeric(model_nn.2 |> predict(subset(d_adults_test, select = -y)))
+accuracy_nn.2 <- (sum(ifelse(predictions_nn.2 >= 0.5,1,0) == d_adults_test[,"y"])/nrow(d_adults_test)) |> round(3)
+```
+
+> The model was not more predictive (accuracy of `{r} accuracy_nn.2`) since there are no complex interactions in the data that the neurel net could pick up.
+
+
+5. Suppose now that we retrieve a dataset (adults_aug) that expands upon the original ‘adults dataset. This dataset contains 6 extra variables; which capture complex aspects of the individuals life courses, with various interdependencies between them and possible non-linearities. Could this expanded data make a difference in terms of more clearly outperforming the standard logit? Investigate this by repeating steps 2-4 on the adults_aug dataset. Does your conclusion about the relevance of more complex network structure differ between the two datasets? Why?
+
+```{r}
+# load new data
+d_adults_aug <- readRDS("./3/adults_aug.rds")
+
+idx <- sample(seq_len(nrow(d_adults_aug)), 
+              size = floor(0.8 * nrow(d_adults_aug)))
+d_adults_aug_train <- d_adults_aug[idx, ]
+d_adults_aug_test  <- d_adults_aug[-idx, ]
+
+
+# Calculate new glm
+model_aug_glm <- glm(y ~ .,
+                     data = d_adults_aug_train |> as.data.frame(),
+                     family = "binomial")
+
+predictions_aug_glm <- cbind(d_adults_aug_test |> as.data.frame(),
+                             predictions = ifelse(
+                               predict(model_glm, as.data.frame(d_adults_aug_test),
+                                       type = "response") >= 0.5,
+                               1, 0))
+
+accuracy_aug_glm <- (sum(predictions_aug_glm$predictions == predictions_aug_glm$y)/nrow(predictions_aug_glm)) |> round(3)
+
+
+# Calculate new simple nn
+k_clear_session()
+
+model_aug_nn <- keras_model_sequential() |>
+  layer_dense(units = 5, activation = "relu", 
+              input_shape = ncol(subset(d_adults_aug_train, select = -y))) |>
+  layer_dense(units = 1, activation = "sigmoid")
+
+model_aug_nn |>
+  compile(
+    optimizer = optimizer_adam(1e-3),   # optimizer/learning rate
+    loss = "binary_crossentropy",
+    metrics = "accuracy"
+  )
+
+history_aug_nn <- model_aug_nn |>
+  fit(
+    x = subset(d_adults_aug_train, select = -y), 
+    y = d_adults_aug_train[,"y"],
+    epochs = 25,
+    batch_size = 32,
+    validation_split = 0.2,
+    verbose = 0
+  )
+
+predictions_aug_nn <- as.numeric(model_aug_nn |> predict(subset(d_adults_aug_test, select = -y)))
+accuracy_aug_nn <- (sum(ifelse(predictions_aug_nn >= 0.5,1,0) == d_adults_aug_test[,"y"])/nrow(d_adults_aug_test)) |> round(3)
+
+
+# Calculate new complex nn
+k_clear_session()
+
+model_aug_nn.2 <- keras_model_sequential() |>
+  layer_dense(units = 256, activation = "relu") |>
+  layer_dense(units = 128, activation = "relu") |>
+  layer_dense(units = 64, activation = "relu") |>
+  layer_dense(units = 32, activation = "relu") |>
+  layer_dense(units = 1, activation = "sigmoid")
+
+model_aug_nn.2 |>
+  compile(
+    optimizer = optimizer_adam(1e-3),   # optimizer/learning rate
+    loss = "binary_crossentropy",
+    metrics = "accuracy"
+  )
+
+history_aug_nn <- model_aug_nn.2 |>
+  fit(
+    x = subset(d_adults_aug_train, select = -y), 
+    y = d_adults_aug_train[,"y"],
+    epochs = 25,
+    batch_size = 32,
+    validation_split = 0.2,
+    verbose = 0
+  )
+
+predictions_aug_nn.2 <- as.numeric(model_aug_nn.2 |> predict(subset(d_adults_aug_test, select = -y)))
+accuracy_aug_nn.2 <- (sum(ifelse(predictions_aug_nn.2 >= 0.5,1,0) == d_adults_aug_test[,"y"])/nrow(d_adults_aug_test)) |> round(3)
+
+# make nice table
+tribble(
+  ~Model,       ~`Simple Data`, ~`Complex Data`,
+  "glm",        accuracy_glm,   accuracy_aug_glm,
+  "simple nn",  accuracy_nn,    accuracy_aug_nn,
+  "complex nn", accuracy_nn.2,  accuracy_aug_nn.2
+) |> kable()
+```
+
+> The newly introduced data seems to introduce a lot of informations through their interactions/latent variables about the datagenerating processes. The neural networks are made for picking up on those. Especially the more complex neural network with all it's hidden layers is very good at picking those up. 
+
+
+
+6. Given the results, you may find it unnecessary to to try further revisions. But for learning purposes, suppose we want to re-estimate the best-performing model on the adults_aug data using dropout learning. Update the model to perform dropout for the first three hidden layers. Estimate one model where you inactivate 10% for each of the hidden layers, and a second model where you inactivate 90% per layer, and report the results. In what direction does the results change? Do you attribute this change to a change in bias or in variance and why?
+
+```{r}
+# first nn
+k_clear_session()
+
+model_final_nn <- keras_model_sequential() |>
+  layer_dropout(rate = 0.1) |>
+  layer_dense(units = 256, activation = "relu", 
+              input_shape = ncol(subset(d_adults_aug_train, select = -y))) |>
+  layer_dropout(rate = 0.1) |>
+  layer_dense(units = 128, activation = "relu", 
+              input_shape = ncol(subset(d_adults_aug_train, select = -y))) |>
+  layer_dropout(rate = 0.1) |>
+  layer_dense(units = 64, activation = "relu", 
+              input_shape = ncol(subset(d_adults_aug_train, select = -y))) |>
+  layer_dense(units = 32, activation = "relu", 
+              input_shape = ncol(subset(d_adults_aug_train, select = -y))) |>
+  layer_dense(units = 1, activation = "sigmoid")
+
+model_final_nn |>
+  compile(
+    optimizer = optimizer_adam(1e-3),   # optimizer/learning rate
+    loss = "binary_crossentropy",
+    metrics = "accuracy"
+  )
+
+history_final_nn <- model_final_nn |>
+  fit(
+    x = subset(d_adults_aug_train, select = -y), 
+    y = d_adults_aug_train[,"y"],
+    epochs = 25,
+    batch_size = 32,
+    validation_split = 0.2,
+    verbose = 0
+  )
+
+predictions_final_nn <- as.numeric(model_final_nn |> predict(subset(d_adults_aug_test, select = -y)))
+accuracy_aug_nn <- (sum(ifelse(predictions_final_nn >= 0.5,1,0) == d_adults_aug_test[,"y"])/
+                        nrow(d_adults_aug_test)) |> round(3)
+
+# second nn
+k_clear_session()
+
+model_final_nn.2 <- keras_model_sequential() |>
+  layer_dropout(rate = 0.9) |>
+  layer_dense(units = 256, activation = "relu") |>
+  layer_dropout(rate = 0.9) |>
+  layer_dense(units = 128, activation = "relu") |>
+  layer_dropout(rate = 0.9) |>
+  layer_dense(units = 64, activation = "relu") |>
+  layer_dense(units = 32, activation = "relu") |>
+  layer_dense(units = 1, activation = "sigmoid")
+
+model_final_nn.2 |>
+  compile(
+    optimizer = optimizer_adam(1e-3),   # optimizer/learning rate
+    loss = "binary_crossentropy",
+    metrics = "accuracy"
+  )
+
+history_final_nn.2 <- model_final_nn.2 |>
+  fit(
+    x = subset(d_adults_aug_train, select = -y), 
+    y = d_adults_aug_train[,"y"],
+    epochs = 25,
+    batch_size = 32,
+    validation_split = 0.2,
+    verbose = 0
+  )
+
+predictions_final_nn.2 <- as.numeric(model_final_nn.2 |> predict(subset(d_adults_aug_test, select = -y)))
+accuracy_aug_nn.2 <- (sum(ifelse(predictions_final_nn.2 >= 0.5,1,0) == d_adults_aug_test[,"y"])/
+                        nrow(d_adults_aug_test)) |> round(3)
+
+# make nice table
+tribble(
+  ~Model,       ~`Accuracy`,
+  "10% Dropout",  accuracy_aug_nn,
+  "90% Dropout",  accuracy_aug_nn.2) |> kable()
+```
+
+> The 10% dropout rate reduced variance in the model, making it slightly less overfit while maintaining nearly the same accuracy. However, when the dropout rate is increased to 90%, the model lacks sufficient information to capture complex interactions. This leads to higher bias and a poorer representation of the data-yet it still manages to reach 75% accuracy, raising the question of whether the simplification might actually make the model perform better in some respects.
+
+
+# Part 2: image prediction
+
+1. Begin by importing the datafiles ”fashion_2016_train.rds” and ”fashion_2016_test.rds”.
+
+```{r}
+rm(list = ls())
+
+d_fashion_train <- readRDS("fashion_2016_train.rds")
+d_fashion_test <- readRDS("fashion_2016_test.rds")
+```
+
+2. Next, estimate a simple convolutional neural network with $K = 1$ convolutional layers and $M = 1$ regular type of (fully connected) hidden layers. Specify the number of filters (in the convolutional layer) and the number of hidden units (in the fully connected / regular hidden slides) to be 8. Remember also that included after each added convolutional layer, pooling (max-pooling, 2 ∗ 2) should to be applied. Finally, include `layer_dense(units = 10, activation = "softmax")` at the end. When compiling the model using the compile() function, set loss = ”sparse_categorical_crossentroy”. Report the results, and reflect on whether you think improvement can be made by increasing either M, K, or the number of filters or hidden units in the regular hidden layer.
+
+```{r}
+inspect_training_image <- function(ITEMNUMBER){
+
+  label <- d_fashion_train$fashion_labels[d_fashion_train$labels[ITEMNUMBER] + 1]
+  
+  par(mar = c(0,0,0,0))
+  img <- d_fashion_train$images[ITEMNUMBER,1:28,1:28,1]
+  image(t(apply(img, 2, rev)), col = gray.colors(256), axes = FALSE)
+  
+  return(list(image = img, label = label))
+}
+
+inspect_test_image <- function(ITEMNUMBER){
+
+  label <- d_fashion_test$fashion_labels[d_fashion_test$labels[ITEMNUMBER] + 1]
+  
+  par(mar = c(0,0,0,0))
+  img <- d_fashion_test$images[ITEMNUMBER,1:28,1:28,1]
+  image(t(apply(img, 2, rev)), col = gray.colors(256), axes = FALSE)
+  
+  return(list(image = img, label = label))
+}
+```
+
+```{r}
+k_clear_session()
+
+model_cnn <- keras_model_sequential() |>
+  layer_conv_2d(
+    filters = 8,          # number of feature maps learned
+    kernel_size = c(3,3), # size of the filters
+    activation = "relu",  # nonlinearity after convolution
+    # dimensions of input images (H, W, C)
+    input_shape = c(28,28,1) 
+    ) |>
+  # downsample by taking local maxima over 2x2 windows
+  layer_max_pooling_2d(pool_size = c(2,2)) |> 
+  layer_flatten() |> # convert 2D feature maps -> 1D vector for Dense layer
+  # Dense hidden layer after convolution (feature combination step)
+  layer_dense(units = 8, activation = "relu") |>
+  # Output Layer: units: classes, softmax probabilities sum to 1
+  layer_dense(units = 10, activation = "softmax")
+
+model_cnn |>
+  compile(
+    optimizer = optimizer_adam(), # adaptive learning rate
+    loss      = "sparse_categorical_crossentropy", 
+    metrics   = "accuracy" 
+  )
+
+history_cnn <- model_cnn |>
+  fit(
+    x = d_fashion_train$images,
+    y = d_fashion_train$labels,
+    epochs = 5, 
+    batch_size = 128, # how many observations to process before updating params
+    validation_split = 0.1, # hold out part of training for monitoring
+    verbose = 0
+  )
+
+# Evaluate on test set
+eval_model_cnn <-  model_cnn |>
+  evaluate(d_fashion_test$images, d_fashion_test$labels, verbose = 0) 
+
+tribble(
+  ~Parameter,  ~`Value`,
+  "Accuracy",  eval_model_cnn$accuracy |> round(3),
+  "Loss",      eval_model_cnn$loss |> round(3)) |> kable()
+```
+
+> The M stands for the amount of convolutional layers in the model, while the K notates the number of regular hidden layers in the model. A higher number of convolutional layers would pick up on more complex features of the image, while a larger K results in a more complex classifier. Since the image is so small a second convolutional layer would probably pick up on more details, which would improve performance but a stronger classifier (more regular layers and higher M) would probably lead to a higher improvement in accuracy since only one hidden layer is unable to pick up on any interactions. The larger the count of filters, the more features of similar size the neuralnet looks for. The larger the filters the larger the features a filter picks up in an image. I expect that a neuralnet works best when the amount of units in the hidden layer are of similar size to the number of filters that are fed into the hidden layer.
+
+
+3. Next, you shall estimate a slightly more complex convolutional neural network, increasing the number of filters to 32 in the first layer, and 64 in the second convolutional layer. Similarly, increase the number of hidden units in the first regular/fully-connected hidden layer to 64, and the second to 32. Report the results. Does this slightly more complicated model improve/degrade upon the simple one in #2? Speculate why in terms of the bias/variance trade-off. Report and contrast also the number of parameters between the two.
+
+```{r}
+k_clear_session()
+
+model_cnn2 <- keras_model_sequential() |>
+  layer_conv_2d(
+    filters = 32,         
+    kernel_size = c(3,3),
+    activation = "relu",
+    input_shape = c(28,28,1) 
+    ) |>
+  layer_max_pooling_2d(pool_size = c(2,2)) |> 
+  layer_conv_2d(
+    filters = 64,         
+    kernel_size = c(3,3),
+    activation = "relu",
+    input_shape = c(28,28,1) 
+    ) |>
+  layer_max_pooling_2d(pool_size = c(2,2)) |> 
+  layer_flatten() |> 
+  layer_dense(units = 64, activation = "relu") |>
+  layer_dense(units = 32, activation = "relu") |>
+  layer_dense(units = 10, activation = "softmax")
+
+model_cnn2 |>
+  compile(
+    optimizer = optimizer_adam(), # adaptive learning rate
+    loss      = "sparse_categorical_crossentropy", 
+    metrics   = "accuracy" 
+  )
+
+history_cnn2 <- model_cnn2 |>
+  fit(
+    x = d_fashion_train$images,
+    y = d_fashion_train$labels,
+    epochs = 3, 
+    batch_size = 128, # how many observations to process before updating params
+    validation_split = 0.1, # hold out part of training for monitoring
+    verbose = 0
+  )
+
+# Evaluate on test set
+eval_model_cnn2 <-  model_cnn2 |>
+  evaluate(d_fashion_test$images, d_fashion_test$labels, verbose = 0) 
+
+tribble(
+  ~Parameter,  ~`Value`,
+  "Accuracy",  eval_model_cnn2$accuracy |> round(3),
+  "Loss",      eval_model_cnn2$loss |> round(3)) |> kable()
+```
+
+Does this slightly more complicated model improve/degrade upon the simple one in #2? Speculate why in terms of the bias/variance trade-off. Report and contrast also the number of parameters between the two.
+> yes slightly better,
+
+
+
+
+
+
+
+
+
+
+
+
