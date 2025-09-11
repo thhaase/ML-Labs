@@ -47,6 +47,8 @@ library(tensorflow)
 library(kableExtra)
 library(tibble)
 
+library(data.table)
+library(ggplot2)
 # set wd dynamically through Rstudio API
 rstudioapi::getSourceEditorContext()$path |> 
   dirname() |>
@@ -68,8 +70,6 @@ d_adults_test  <- d_adults[-idx, ]
 ```
 
 > I expect a neural network to be as good as logistic regression, because a neural network is particularly good at detecting complex interactions. But if a neural network is only fit to a simple dataset, it will not be able to make use of its core strength and basically regress to becoming a logistic regression or completely overfit. 
-
-# FINISH THIS ANE MAKE MORE BEUTIFUL
 
 2. Begin with estimating a standard logistic regression model to the training set you just created. Hint: you may use the glm(. . . , family=’binomial’) function to estimate a standard logistic regression model. When estimation has finished, use the predict() function to predict the outcome on the test dataset, and calculate (report) the accuracy.
 
@@ -484,13 +484,114 @@ tribble(
   "Loss",      eval_model_cnn2$loss |> round(3)) |> kable()
 ```
 
-Does this slightly more complicated model improve/degrade upon the simple one in #2? Speculate why in terms of the bias/variance trade-off. Report and contrast also the number of parameters between the two.
-> yes slightly better,
+```{r}
+summary(model_cnn)
+summary(model_cnn2)
+```
+
+> The simpler model has fewer parameters, which reduces variance but increases bias. The complex model reduces bias (it can capture more structure), but variance risk increases. Since you only added a moderate amount of complexity, test accuracy improved slightly, suggesting the extra capacity helped reduce bias without yet overfitting. The first CNN has 32,984 total parameters and the second CNN has 371,072 total parameters.
+
+4. In #2-3, we used max-pooling of 2*2. Why is it generally not a good idea to increase the dimension of the pooling to become large relative to the images? Would this increase bias or variance?
+
+> Pooling reduces the dimensionality of feature maps, and increases location invariance. This puts the emphasis on the presence of signal rather than the location of it. For example "maximum pooling" keeps largest value within $k \times k$ patches (here k = 2). The larger the dimension of the pooling window size, the more the spatial information is dilluted which makes the model more biased leading to decreased variance. 
+
+5. Because we are interested in using the predictions from these models for downstream analysis (of trends in consumer polarization), it is extra important to validate the measure. This is what you shall do now, focusing on the CNN model you deemed the best thus far. In particular you should break down the accuracy per item category. Is there meaninful difference in predictability beween item classes? Does the ordering make substantive sense? Hint: to compute accuracy by group, you may use the following code:
+
+```{r}
+accuracy_by_class_dt <- data.table(actual = d_fashion_train$labels,
+                                   predicted = apply(predict(model_cnn2, d_fashion_train$images), 1, which.max) - 1)[,correct := fifelse(actual==predicted, yes = 1, no = 0)]
 
 
+accuracy_by_class_dt <- merge(x = accuracy_by_class_dt,
+                              y = data.table(label = d_fashion_train$fashion_labels, 
+                                             number = 0:9),
+                              by.x='actual',by.y='number')
+
+accuracy_by_class_dt[,.(accuracy=mean(correct)),by=label][order(accuracy,decreasing = T)] |> 
+  kable()
+```
+
+```{r}
+#| fig.align: center
+#| fig-width: 9
+#| fig-height: 6
+
+accuracy_by_class_dt[,.(accuracy=mean(correct)),by=label][order(accuracy,decreasing = T)] |>
+  ggplot(aes(y=reorder(label, accuracy),x = accuracy)) + 
+  geom_segment(aes(x = 0, xend = accuracy,
+                   y = label, yend = label),
+               color = "#333333",
+               linewidth = 1) +
+  geom_point(size=3) + 
+  labs(title = "Prediction Accuracy per Label",
+       subtitle = "More complex Convolutional Neural Net: model_cnn2",
+       x = "Prediction Accuracy",
+       y = "Labels") +
+  scale_x_continuous(breaks = seq(0,1,0.2)) +
+  theme_minimal()
+```
+
+> Most productimages can be classified with a high accuracy by the convolutional neural network. The Shirt stands out as the product which can not be identified from an image with an accuracy of less than 50%.
+
+```{r}
+#| eval: false
+
+# inspect random tshirt
+inspect_test_image(sample(which(d_fashion_test$labels == 6),1))$image
+
+# inspect random Ankle boot
+inspect_test_image(sample(which(d_fashion_test$labels == 9),1))$image
+```
+
+> After investigating a few images from the best and worst predicted label the differences in prediction accuracy most probably result from the variability of pictures within a certain label. Most ankle boots have a very similar shape and are often of light color, while the shirts have very different shapes and colors. Maybe adding higher differentiation of different shirts could improve the prediction accuracy (adding more labels).
+
+6. Next, we shall finally adress the question we set out to answer: how patterns in consumer behavior changed between 2016 to 2017. To answer this question, please follow these steps:
+
+-  Import the fashion2016_2017_unlabeled.rds file, which contains all images and the sociodemographic info of the individual associated with the image. Note: the data has already been preprocced (normalized pixel values, etc.).
+
+```{r}
+rm(list = setdiff(ls(), c("eval_model_cnn2", "history_cnn2", "model_cnn2")))
+
+d <- readRDS("fashion_2015_2016_unlabeled.rds")
+```
 
 
+- Use the predict() function to predict for this dataset based on the CNN model you thought were the best. Note that, when you use the predict() function for a model where you have multiple-category outcome variables, like here, each observation get a probability over the items. To assign the prediction to the maximum value, you may use this code: `apply(preds_2016_2017, 1, which.max) – 1`
 
+```{r}
+preds <- predict(model_cnn2, d$images)
+
+predicted_labels <- c(apply(preds, 1, which.max) - 1)
+rm(preds)
+```
+
+
+-  Then you can simply merge the predicted category with the demographic variable data.frame, and calculate various associations by classical statistical means.
+
+```{r}
+df <- cbind(d$demographics, predicted_labels)
+
+labels_map <- data.frame(
+  label = c("T-shirt/top", "Trouser", "Pullover", "Dress", "Coat",
+            "Sandal", "Shirt", "Sneaker", "Bag", "Ankle boot"),
+  number = 0:9
+  )
+
+df <- merge(df, labels_map, 
+            by.x = "predicted_labels", 
+            by.y = "number", 
+            all.x = TRUE)
+
+rm(d,eval_model_cnn2,history_cnn2,labels_map,model_cnn2,predicted_labels)
+
+saveRDS(df, file = "final_dataset.rds")
+```
+
+```{r}
+d <- readRDS("final_dataset.rds")
+```
+
+- Report your findings.
 
 
 
