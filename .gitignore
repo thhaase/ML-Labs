@@ -2,3 +2,5 @@
 1/.Rhistory
 *.csv
 *.rds
+.Rhistory
+3/Miniconda3-latest-Linux-x86_64.sh
