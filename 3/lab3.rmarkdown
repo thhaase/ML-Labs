@@ -35,9 +35,13 @@ editor_options:
 ---
 
 
+
+
 # Part 1: Salary prediction
 
 In the first part of this lab, we will work with a dataset (adults) containing information about a sample of US individuals’ salaries as well as a handful sociodemographic variables. We will also consider an augmented version of this dataset (adults_aug), combining the original data with (simulated) highly nuanced lifecourse information. With this, the objective is to explore how accurately we can predict the salaries of individuals, comparing neural networks with other methods from previous weeks.
+
+
 
 ```{r}
 library(keras)
@@ -58,8 +62,12 @@ library(ggplot2)
 set.seed(42)
 ```
 
+
+
 ## Task 1
 1. Begin by importing adults.rds and partition the data into a training and test set. We will use the training set to fit our model, and the test set to assess accuracy and compare across models. The dataset contains cirka 50,000 individuals, and for each we have information about five traditional variables (age, education, hours worked per week, capital gain and capital loss). We are reasonably sure there are no complex interactions or non-linearities. With this as the background, do you believe a neural network model is likely to excel on this dataset? Why/why not?
+
+
 
 ```{r}
 d_adults <- readRDS("adults.rds")
@@ -71,11 +79,15 @@ d_adults_train <- d_adults[idx, ]
 d_adults_test  <- d_adults[-idx, ]
 ```
 
+
+
 > I expect a neural network to be as good as logistic regression, because a neural network is particularly good at detecting complex interactions. But if a neural network is only fit to a simple dataset, it will not be able to make use of its core strength and basically regress to becoming a logistic regression or completely overfit. 
 
 
 ## Task 2
 2. Begin with estimating a standard logistic regression model to the training set you just created. Hint: you may use the glm(. . . , family=’binomial’) function to estimate a standard logistic regression model. When estimation has finished, use the predict() function to predict the outcome on the test dataset, and calculate (report) the accuracy.
+
+
 
 ```{r}
 model_glm <- glm(y ~ .,
@@ -91,10 +103,14 @@ predictions_glm <- cbind(d_adults_test |> as.data.frame(),
 accuracy_glm <- (sum(predictions_glm$predictions == predictions_glm$y)/nrow(predictions_glm)) |> round(3)
 ```
 
-> The accuracy of the glm is `{r} accuracy_glm`.
+
+
+> The accuracy of the glm is `r .QuartoInlineRender(accuracy_glm)`.
 
 ## Task 3
 3. Estimate a neural network with 1 hidden layer and 5 hidden units. In the compile() function, set the optimizer to optimizer_adam(), the loss function equal to ”binary_crossentropy” (as the outcome is binary), and metrics to ”accuracy”. Report the accuracy. Did the result match your expectations formulated in #1?
+
+
 
 ```{r}
 k_clear_session()
@@ -127,10 +143,14 @@ predictions_nn <- as.numeric(model_nn |> predict(subset(d_adults_test, select = 
 accuracy_nn <- (sum(ifelse(predictions_nn >= 0.5,1,0) == d_adults_test[,"y"])/nrow(d_adults_test)) |> round(3)
 ```
 
-> The accuracy of the neural network is `{r} accuracy_nn`. As expected the accuracy of the neural network is only as good as the accuracy of the logistic regression. 
+
+
+> The accuracy of the neural network is `r .QuartoInlineRender(accuracy_nn)`. As expected the accuracy of the neural network is only as good as the accuracy of the logistic regression. 
 
 ## Task 4
 4. Next, you shall estimate a considerably more complex neural network, containing 4 hidden layers. The first hidden layer should have 256 hidden units, the second hidden layer 128 hidden units, the third hidden layer 64 hidden units, and the fourth hidden layer 32 hidden units. Use the same settings for compile() as in #3. Report the total number of parameters and then estimate the model. Do you find that it outperforms #3 meaningfully? Why do you think this is (or is not) the case?
+
+
 
 ```{r}
 k_clear_session()
@@ -165,10 +185,14 @@ predictions_nn.2 <- as.numeric(model_nn.2 |> predict(subset(d_adults_test, selec
 accuracy_nn.2 <- (sum(ifelse(predictions_nn.2 >= 0.5,1,0) == d_adults_test[,"y"])/nrow(d_adults_test)) |> round(3)
 ```
 
-> The model was not more predictive (accuracy of `{r} accuracy_nn.2`) since there are no complex interactions in the data that the neurel net could pick up.
+
+
+> The model was not more predictive (accuracy of `r .QuartoInlineRender(accuracy_nn.2)`) since there are no complex interactions in the data that the neurel net could pick up.
 
 ## Task 5
 5. Suppose now that we retrieve a dataset (adults_aug) that expands upon the original ‘adults dataset. This dataset contains 6 extra variables; which capture complex aspects of the individuals life courses, with various interdependencies between them and possible non-linearities. Could this expanded data make a difference in terms of more clearly outperforming the standard logit? Investigate this by repeating steps 2-4 on the adults_aug dataset. Does your conclusion about the relevance of more complex network structure differ between the two datasets? Why?
+
+
 
 ```{r}
 # load new data
@@ -262,11 +286,15 @@ tribble(
 ) |> kable()
 ```
 
+
+
 > The newly introduced data seems to introduce a lot of informations through their interactions/latent variables about the datagenerating processes. The neural networks are made for picking up on those. Especially the more complex neural network with all it's hidden layers is very good at picking those up. 
 
 
 ## Task 6
 6. Given the results, you may find it unnecessary to to try further revisions. But for learning purposes, suppose we want to re-estimate the best-performing model on the adults_aug data using dropout learning. Update the model to perform dropout for the first three hidden layers. Estimate one model where you inactivate 10% for each of the hidden layers, and a second model where you inactivate 90% per layer, and report the results. In what direction does the results change? Do you attribute this change to a change in bias or in variance and why?
+
+
 
 ```{r}
 # first nn
@@ -348,6 +376,8 @@ tribble(
   "90% Dropout",  accuracy_aug_nn.2) |> kable()
 ```
 
+
+
 > The 10% dropout rate reduced variance in the model, making it slightly less overfit while maintaining nearly the same accuracy. However, when the dropout rate is increased to 90%, the model lacks sufficient information to capture complex interactions. This leads to higher bias and a poorer representation of the data-yet it still manages to reach 75% accuracy, raising the question of whether the simplification might actually make the model perform better in some respects.
 
 
@@ -355,6 +385,8 @@ tribble(
 
 ## Task 1
 1. Begin by importing the datafiles ”fashion_2016_train.rds” and ”fashion_2016_test.rds”.
+
+
 
 ```{r}
 rm(list = ls())
@@ -364,8 +396,12 @@ d_fashion_test <- readRDS("fashion_2016_test.rds")
 ```
 
 
+
+
 ## Task 2
 2. Next, estimate a simple convolutional neural network with $K = 1$ convolutional layers and $M = 1$ regular type of (fully connected) hidden layers. Specify the number of filters (in the convolutional layer) and the number of hidden units (in the fully connected / regular hidden slides) to be 8. Remember also that included after each added convolutional layer, pooling (max-pooling, 2 ∗ 2) should to be applied. Finally, include `layer_dense(units = 10, activation = "softmax")` at the end. When compiling the model using the compile() function, set loss = ”sparse_categorical_crossentroy”. Report the results, and reflect on whether you think improvement can be made by increasing either M, K, or the number of filters or hidden units in the regular hidden layer.
+
+
 
 ```{r}
 inspect_training_image <- function(ITEMNUMBER){
@@ -437,11 +473,15 @@ tribble(
   "Loss",      eval_model_cnn$loss |> round(3)) |> kable()
 ```
 
+
+
 > The M stands for the amount of convolutional layers in the model, while the K notates the number of regular hidden layers in the model. A higher number of convolutional layers would pick up on more complex features of the image, while a larger K results in a more complex classifier. Since the image is so small a second convolutional layer would probably pick up on more details, which would improve performance but a stronger classifier (more regular layers and higher M) would probably lead to a higher improvement in accuracy since only one hidden layer is unable to pick up on any interactions. The larger the count of filters, the more features of similar size the neuralnet looks for. The larger the filters the larger the features a filter picks up in an image. I expect that a neuralnet works best when the amount of units in the hidden layer are of similar size to the number of filters that are fed into the hidden layer.
 
 
 ## Task 3
 3. Next, you shall estimate a slightly more complex convolutional neural network, increasing the number of filters to 32 in the first layer, and 64 in the second convolutional layer. Similarly, increase the number of hidden units in the first regular/fully-connected hidden layer to 64, and the second to 32. Report the results. Does this slightly more complicated model improve/degrade upon the simple one in #2? Speculate why in terms of the bias/variance trade-off. Report and contrast also the number of parameters between the two.
+
+
 
 ```{r}
 k_clear_session()
@@ -498,6 +538,8 @@ summary(model_cnn)
 summary(model_cnn2)
 ```
 
+
+
 > The simpler model has fewer parameters, which reduces variance but increases bias. The complex model reduces bias (it can capture more structure), but variance risk increases. Since you only added a moderate amount of complexity, test accuracy improved slightly, suggesting the extra capacity helped reduce bias without yet overfitting. The first CNN has 32,984 total parameters and the second CNN has 371,072 total parameters.
 
 
@@ -509,6 +551,8 @@ summary(model_cnn2)
 
 ## Task 5
 5. Because we are interested in using the predictions from these models for downstream analysis (of trends in consumer polarization), it is extra important to validate the measure. This is what you shall do now, focusing on the CNN model you deemed the best thus far. In particular you should break down the accuracy per item category. Is there meaninful difference in predictability beween item classes? Does the ordering make substantive sense? Hint: to compute accuracy by group, you may use the following code:
+
+
 
 ```{r}
 accuracy_by_class_dt <- data.table(actual = d_fashion_train$labels,
@@ -544,7 +588,11 @@ accuracy_by_class_dt[,.(accuracy=mean(correct)),by=label][order(accuracy,decreas
   theme_minimal()
 ```
 
+
+
 > Most productimages can be classified with a high accuracy by the convolutional neural network. The Shirt stands out as the product which can not be identified from an image with an accuracy of less than 50%.
+
+
 
 ```{r}
 #| eval: false
@@ -556,6 +604,8 @@ inspect_test_image(sample(which(d_fashion_test$labels == 6),1))$image
 inspect_test_image(sample(which(d_fashion_test$labels == 9),1))$image
 ```
 
+
+
 > After investigating a few images from the best and worst predicted label the differences in prediction accuracy most probably result from the variability of pictures within a certain label. Most ankle boots have a very similar shape and are often of light color, while the shirts have very different shapes and colors. Maybe adding higher differentiation of different shirts could improve the prediction accuracy (adding more labels).
 
 
@@ -564,6 +614,8 @@ inspect_test_image(sample(which(d_fashion_test$labels == 9),1))$image
 
 -  Import the fashion2016_2017_unlabeled.rds file, which contains all images and the sociodemographic info of the individual associated with the image. Note: the data has already been preprocced (normalized pixel values, etc.).
 
+
+
 ```{r}
 rm(list = setdiff(ls(), c("eval_model_cnn2", "history_cnn2", "model_cnn2")))
 
@@ -571,7 +623,11 @@ d <- readRDS("fashion_2015_2016_unlabeled.rds")
 ```
 
 
+
+
 - Use the predict() function to predict for this dataset based on the CNN model you thought were the best. Note that, when you use the predict() function for a model where you have multiple-category outcome variables, like here, each observation get a probability over the items. To assign the prediction to the maximum value, you may use this code: `apply(preds_2016_2017, 1, which.max) – 1`
+
+
 
 ```{r}
 preds <- predict(model_cnn2, d$images)
@@ -581,7 +637,11 @@ rm(preds)
 ```
 
 
+
+
 -  Then you can simply merge the predicted category with the demographic variable data.frame, and calculate various associations by classical statistical means.
+
+
 
 ```{r}
 df <- cbind(d$demographics, predicted_labels)
@@ -612,7 +672,11 @@ d <- readRDS("final_dataset.rds") |>
 d$year |> table() |> kable(col.names = c("Year", "Observations")) 
 ```
 
+
+
 There are almost twice as many observations of customer behaviour for the year 2016 compared to 2017. 
+
+
 
 ```{r}
 #| fig.align: center
@@ -670,7 +734,11 @@ ggplot(aes(x = factor(label), y = prop,
   theme(legend.position = "bottom")
 ```
 
+
+
 Across all background variables - age, income, education, and product preferences - the distributions in 2016 and 2017 are strikingly similar. While total purchases dropped substantially, the underlying customer profile and shopping patterns remained essentially unchanged, with only tiny relative shifts that carry little substantive meaning.
+
+
 
 ```{r}
 #| fig.align: center
@@ -701,7 +769,11 @@ d |>
   theme_minimal()
 ```
 
+
+
 Overall, the relative changes in purchase shares between 2016 and 2017 are very small, with most shifts staying well below a few percentage points. While some categories and regions show slight increases or decreases, the patterns suggest that the urban-rural divide and regional variation remained largely stable across the two years.
+
+
 
 ```{r}
 library(FactoMineR)
@@ -750,6 +822,8 @@ fviz_mca_var(mca, title = "MCA of Consumergroups",
                          rep("urban",2), rep("region",4),
                          rep("label",10))) 
 ```
+
+
 
 The MCA was calculated with the years as a supporting variable (left out of estimation but still plotted). 
 Both axis explain very little variance in the data. The first axis is made up of the distincion between los and high income. The second axis is mainly driven by the age variable. perpendicular to both (like a starshape) it is possible to distinguish a countryside-urban axis and an education axis. The regions and years seem to have no impact on the consumer choices. We can see that young customers with low income buy mainly trousers and tshirts. Young customers with higher income start buying more shoes and at some point ankleboots instead of sneakers. Old customers with low income like to buy dresses while high age customers with high income buy coats. High income is generally connected to buying Bags while low income is generally connected to buying Pullovers. 
