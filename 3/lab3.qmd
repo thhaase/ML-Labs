@@ -162,10 +162,13 @@ history_nn <- model_nn.2 |>
   )
 
 predictions_nn.2 <- as.numeric(model_nn.2 |> predict(subset(d_adults_test, select = -y)))
-accuracy_nn.2 <- (sum(ifelse(predictions_nn.2 >= 0.5,1,0) == d_adults_test[,"y"])/nrow(d_adults_test)) |> round(3)
+accuracy_nn.2 <- (sum(ifelse(predictions_nn.2 >= 0.5,1,0) == d_adults_test[,"y"])/nrow(d_adults_test)) |> round(3)#
+
+summary(model_nn.2)
 ```
 
 > The model was not more predictive (accuracy of `{r} accuracy_nn.2`) since there are no complex interactions in the data that the neurel net could pick up.
+
 
 ## Task 5
 5. Suppose now that we retrieve a dataset (adults_aug) that expands upon the original ‘adults dataset. This dataset contains 6 extra variables; which capture complex aspects of the individuals life courses, with various interdependencies between them and possible non-linearities. Could this expanded data make a difference in terms of more clearly outperforming the standard logit? Investigate this by repeating steps 2-4 on the adults_aug dataset. Does your conclusion about the relevance of more complex network structure differ between the two datasets? Why?
@@ -704,6 +707,10 @@ d |>
 Overall, the relative changes in purchase shares between 2016 and 2017 are very small, with most shifts staying well below a few percentage points. While some categories and regions show slight increases or decreases, the patterns suggest that the urban-rural divide and regional variation remained largely stable across the two years.
 
 ```{r}
+#| fig.align: center
+#| fig-width: 8
+#| fig-height: 6
+
 library(FactoMineR)
 library(factoextra)
 library(explor)
