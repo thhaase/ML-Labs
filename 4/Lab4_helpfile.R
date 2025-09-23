@@ -201,6 +201,9 @@ is_pev_dt <- data.table(lambda=penalities,
 standard_PCA_PEV <- is_pev_dt[lambda==0]$spca_PEV
 is_pev_dt[,IS:=standard_PCA_PEV * spca_PEV * spca_PS]
 
+
+
+
 my_plot <- ggplot(is_pev_dt, aes(x=spca_PS)) +
   geom_line( aes(y=IS)) + 
   geom_line( aes(y=spca_PEV),linetype='dashed') +
