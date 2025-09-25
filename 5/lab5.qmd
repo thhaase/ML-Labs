@@ -182,7 +182,7 @@ t15[, topic_label := topic_labels[as.character(t15$topic)]][!is.na(topic_label)]
   theme_minimal()
 ```
 
-There are a lot of junk topics.
+There are a lot of junk topics, but a few of them are very distinct. 
 
 ## Task 5
 
@@ -202,12 +202,12 @@ colnames(documents)[2:ncol(documents)] <- paste0('Topic',colnames(documents)[2:n
 
 
 top_docs <- documents[
-  order(Topic23,decreasing = T)][
+  order(Topic8,decreasing = T)][
     1:3,doc_id] |> 
   as.integer()
 
 tibble(ID = as.character(top_docs),
-       Gunviolence = as.character(corp)[top_docs]) |> 
+       Education = as.character(corp)[top_docs]) |> 
   kable() |> 
   kable_styling(bootstrap_options = c("striped", "hover", 
                                       "condensed", "responsive")) |>
@@ -265,33 +265,35 @@ if(!file.exists("lda2.rds")){
 
 
 # get top words
-words <- data.table(topic = 1:K,
-                    posterior(object = lda)$terms) |> 
-  melt.data.table(id.vars = 'topic')
-words[order(value,decreasing = T)]
-
-t15 <- words[order(-value), .SD[1:15], by = topic]  
-
-# plot
-topic_labels <- c(
-  "8" = "Topic 8:\nEducation",
-  "15" = "Topic 15:\nExecutive Actions", 
-  "17" = "Topic 17:\nInfrastructure",
-  "23" = "Topic 23:\nGun Violence",
-  "33" = "Topic 33:\nMilitary"
-)
-
-
-# Apply topic labels
-t10[, topic_label := topic_labels[as.character(topic)]][!is.na(topic_label)] |> 
-  ggplot(aes(x = value, y = reorder_within(variable, value, topic_label))) + 
-  geom_bar(stat = 'identity', position = 'dodge', fill = "steelblue3") + 
-  facet_wrap(~topic_label, scales = 'free', ncol = 2) +
-  scale_y_reordered() +
-  labs(title = "Top 10 Words of Selected Topics",
-       x = "Probability", y = "") +
-  theme_minimal()
-
-
+get_terms(lda,15) |> 
+  kable(col.names = c("Healthcare & Tax", 
+                      "Veterans & Community", 
+                      "National Government"),
+        caption = "Top 15 Terms of Topic Model (K = 3)")
 ```
+
+It seems like multiple topics got recognized as one from the model. There are probably more then 3 larger topics adressed in the texts.
+
+```{r}
+#| label: Task1.6.2
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+documents <- data.table(doc_id = lda@documents,
+                        posterior(object = lda)$topics)
+# Assign topics as column names
+colnames(documents)[2:ncol(documents)] <- paste0('Topic',colnames(documents)[2:ncol(documents)]) 
+
+set.seed(5)
+
+documents[,-"doc_id"] |> 
+  as.matrix() -> mat
+
+mat[order(apply(mat, 1, which.max)), ] |> 
+  heatmap(Rowv = NA, Colv = NA)
+```
+
+The heatmap, that ordered the documents by maximum probability, shows, that the distribution over Topics is quite distinct. Only few texts have high probability in all topics. The K= 50 model captured unnecessary topics, while the K = 3 one still shows many stripes in its heatmap. These could probably make up new topics! The optimum lies somewhere inbetween 3 and 50. Just from the Interpretation the 50 topic model is more powerful because it captures more distinctions. 
+
 
