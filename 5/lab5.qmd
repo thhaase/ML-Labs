@@ -1,0 +1,246 @@
+---
+title: "Lab 4"
+subtitle: ""
+author: "Thomas Haase"
+date: last-modified
+date-format: long
+ 
+execute:
+  warning: false
+  echo: true
+  error: false 
+format: 
+  pdf: 
+    toc: true
+    geometry:
+     - top=2cm
+     - left=2cm
+     - right=2cm
+     - bottom=3cm
+    fig-pos: 'h'
+    fig-cap-location: bottom
+    tbl-cap-location: bottom
+    include-in-header:
+    - text: |
+        \usepackage{placeins}
+knitr:
+  opts_chunk:
+      fig.align: center
+number-sections: false
+#bibliography: citations.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+---
+
+# Part 1
+In this lab, we will use a data set containing a random sample of public Facebook posts by members of the U.S. Congress from 2017.1 Our broad objective in this first part of the lab is to explore what topics were discussed, and possible variation by party membership. 
+
+```{r}
+#| label: load_libraries
+
+library(quanteda)
+library(topicmodels)
+library(word2vec)
+
+library(data.table)
+
+library(tibble)
+library(kableExtra)
+library(ggplot2)
+library(tidytext)
+
+setwd("~/Github/ML-Labs/5")
+```
+
+## Task 1
+
+Begin by importing `fb-congress-data3.csv`. Report basic information about the data set; how many rows and column it has, as well as the name of the variables.
+
+```{r}
+#| label: Task1.1
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+d <- read.csv("fb-congress-data3.csv")
+
+tribble(
+  ~Name,     ~Value,
+  "Rows",    nrow(d) |> as.character(),
+  "Columns", ncol(d) |> as.character()) |> 
+  kable()
+
+varnames <- names(d)
+```
+
+\textbf{Variables contained in the dataset:} `{r} varnames`
+
+
+## Task 2
+
+As you may have noticed from your inspection in #1, this data set has yet to be pre-processed (it contains punctuation, etc.). Hence, that is what you shall do now. More specifically, perform the following steps:
+
+
+```{r}
+#| label: Task1.2
+
+# i
+corp <- d |> 
+  corpus(docid_field = "doc_id",
+         text_field = "message",
+         meta = list("screen_name",
+                     "party"))
+
+# ii
+toks <- corp |>
+  tokens(remove_punct = T,
+         remove_numbers = T,
+         remove_symbols = T,
+         remove_url = T) |> 
+# iii
+  tokens_remove(stopwords("english"))
+
+# iv
+toks[1:3]
+```
+
+```{r}
+#| label: Task1.2.2
+
+# v
+dfm <- toks |> dfm() |> 
+
+# vi
+  dfm_trim(min_termfreq = 5)
+# only keep documents with more then 10 features
+dfm <- dfm[which(rowSums(dfm)>=10), ]
+```
+
+## Task 3
+
+Now we are ready to do some topic modeling! To do so, we will use the topicmodels package, and the function LDA(). Set x to your document-term-matrix and specify method="Gibbs" (note: Gibbs is the name of a particular estimation procedure; see the Appendix of the lecture for more details). Set the number of iterations to 1000, and specify a seed number to ensure replicability (hint: to specify iterations and seed number, use the control argument). Finally, set the number of topics, K=50 With these settings specified, start the estimation. This could take a minute or two.
+
+```{r}
+#| label: Task1.3
+
+set.seed(5)
+
+K <- 50 
+
+if(!file.exists("lda.rds")){
+  lda <- LDA(x = dfm, k = K,
+             method="Gibbs",
+             control=list(iter = 1000,
+                          seed = 5,
+                          verbose = 1))
+  saveRDS(lda, file = "lda.rds")
+} else {
+  lda <- readRDS("lda.rds")
+}
+```
+
+
+## Task 4
+Once the estimation is finished, use the `get_terms()` function to extract the 15 words with the highest probability in each topic. In a real research setting, we would carefully examine each of the topics. Here, I only ask you to briefly skim them, and then focus on 5 that (i) you think are interesting, (ii) has a clear theme, and (iii) are clearly distinct from the other topics. Provide a label to each of those based on the top 15 words.
+Complementing your label, please also provide a bar chart displaying on the y-axis the top 15 words, and on the x-axis their topic probabilities. Hint: you can retrieve each topic’s distribution over words using topicmodels’s function posterior.3 Lastly, please also report a general assessment—based on your skim—about the general quality of the topics; do most of them appear clearly themed and distinct, or are there a lot of “junk” topics?
+
+```{r}
+#| label: Task1.4
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+get_terms(lda, 15)[,c(8,15,17,23,33)] |> 
+  as_tibble()
+
+topic_distr_over_words <- data.table(topic = 1:K,
+                                     posterior(object = lda)$terms) |> 
+  melt.data.table(id.vars = 'topic')
+topic_distr_over_words[order(value,decreasing = T)]
+
+
+t10 <- topic_distr_over_words[order(-value), .SD[1:10], by = topic]  
+
+# plot
+topic_labels <- c(
+  "8" = "Topic 8:\nEducation",
+  "15" = "Topic 15:\nExecutive Actions", 
+  "17" = "Topic 17:\nInfrastructure",
+  "23" = "Topic 23:\nGun Violence",
+  "33" = "Topic 33:\nMilitary"
+)
+
+
+# Apply topic labels
+t10[, topic_label := topic_labels[as.character(topic)]][!is.na(topic_label)] |> 
+  ggplot(aes(x = value, y = reorder_within(variable, value, topic_label))) + 
+  geom_bar(stat = 'identity', position = 'dodge', fill = "steelblue3") + 
+  facet_wrap(~topic_label, scales = 'free', ncol = 2) +
+  scale_y_reordered() +
+  labs(title = "Top 10 Words of Selected Topics",
+       x = "Probability", y = "") +
+  theme_minimal()
+```
+
+There are a lot of junk topics.
+
+## Task 5
+
+Out of the 5 topics that you labeled, select two which you think are particularly interesting. For these two, identify the three documents which have the highest proportion assigned of this topic (hint 1: use topicmodels‘s `posterior()` to extract documents’ distribution over topics | hint 2: to identify the document ids which correspond to each row of what you extract from posterior(), you can use `ldaobject@documents`. See help file for more details.), and do a qualitative inspection ($= 2 \times 3$ documents to read). Does your readings corroborate your labels? Are they about what you expected?
+
+```{r}
+#| label: Task1.5
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+documents <- data.table(doc_id = lda@documents,
+                        posterior(object = lda)$topics)
+# Assign topics as column names
+colnames(documents)[2:ncol(documents)] <- paste0('Topic',colnames(documents)[2:ncol(documents)]) 
+
+
+
+top_docs <- documents[
+  order(Topic23,decreasing = T)][
+    1:3,doc_id] |> 
+  as.integer()
+
+tibble(ID = as.character(top_docs),
+       Gunviolence = as.character(corp)[top_docs]) |> 
+  kable() |> 
+  kable_styling(bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) |>
+  column_spec(1, bold = TRUE, width = "3em") |>
+  column_spec(2, width = "40em")
+```
+
+```{r}
+#| label: Task1.5.2
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+top_docs <- documents[
+  order(Topic17,decreasing = T)][
+    1:3,doc_id] |> 
+  as.integer()
+
+tibble(ID = as.character(top_docs),
+       Infrastructure = as.character(corp)[top_docs]) |> 
+  kable() |> 
+  kable_styling(bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) |>
+  column_spec(1, bold = TRUE, width = "3em") |>
+  column_spec(2, width = "40em")
+```
+
+For both topics the three selected prototypical-tweets adress gunviolence and infrasstructure. The model seems very convincing, since the content of the inspected texts meet my expectation.
+
+
+
+
+
+
