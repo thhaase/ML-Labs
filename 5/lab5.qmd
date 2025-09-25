@@ -152,34 +152,32 @@ Complementing your label, please also provide a bar chart displaying on the y-ax
 #| fig-width: 7
 #| fig-height: 6
 
-get_terms(lda, 15)[,c(8,15,17,23,33)] |> 
-  as_tibble()
+get_terms(lda,15)
 
-topic_distr_over_words <- data.table(topic = 1:K,
-                                     posterior(object = lda)$terms) |> 
+words <- data.table(topic = 1:K,
+                    posterior(object = lda)$terms) |> 
   melt.data.table(id.vars = 'topic')
-topic_distr_over_words[order(value,decreasing = T)]
+words <- words[order(value,decreasing = T)]
 
-
-t10 <- topic_distr_over_words[order(-value), .SD[1:10], by = topic]  
+t15 <- words[,head(.SD,15),by='topic']
+t15 <- t15[topic %in% c(2,7,8,9,17)]
 
 # plot
 topic_labels <- c(
-  "8" = "Topic 8:\nEducation",
-  "15" = "Topic 15:\nExecutive Actions", 
-  "17" = "Topic 17:\nInfrastructure",
-  "23" = "Topic 23:\nGun Violence",
-  "33" = "Topic 33:\nMilitary"
+  "2"  = "Topic 2:\nForeign Security",
+  "7"  = "Topic 7:\nHealthcare",
+  "8"  = "Topic 8:\nEducation",
+  "9"  = "Topic 9:\nCrisis",
+  "17" = "Topic 17:\nInfrastructure"
 )
 
-
 # Apply topic labels
-t10[, topic_label := topic_labels[as.character(topic)]][!is.na(topic_label)] |> 
+t15[, topic_label := topic_labels[as.character(t15$topic)]][!is.na(topic_label)] |> 
   ggplot(aes(x = value, y = reorder_within(variable, value, topic_label))) + 
   geom_bar(stat = 'identity', position = 'dodge', fill = "steelblue3") + 
   facet_wrap(~topic_label, scales = 'free', ncol = 2) +
   scale_y_reordered() +
-  labs(title = "Top 10 Words of Selected Topics",
+  labs(title = "Top 15 Words of Selected Topics",
        x = "Probability", y = "") +
   theme_minimal()
 ```
@@ -240,7 +238,60 @@ tibble(ID = as.character(top_docs),
 For both topics the three selected prototypical-tweets adress gunviolence and infrasstructure. The model seems very convincing, since the content of the inspected texts meet my expectation.
 
 
+## Task 6
+
+Now, estimate a topic model—as in #3—but with K=3 instead. Extract the top 15 words from each topic, (try to) label each, and then make an assessment of the overall quality of them. To further explore the quality of this topic model, reconsider the documents you read in #5: extract the distribution over topics for these documents (from your new K=3 model). How well does this topic model capture the theme of these documents? Based on your analysis, which of the two K’s do you prefer? Motivate.
+
+```{r}
+#| label: Task1.6
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+# estimate LDA
+set.seed(5)
+K <- 3
+
+if(!file.exists("lda2.rds")){
+  lda <- LDA(x = dfm, k = K,
+             method="Gibbs",
+             control=list(iter = 1000,
+                          seed = 5,
+                          verbose = 1))
+  saveRDS(lda, file = "lda2.rds")
+} else {
+  lda <- readRDS("lda2.rds")
+}
 
 
+# get top words
+words <- data.table(topic = 1:K,
+                    posterior(object = lda)$terms) |> 
+  melt.data.table(id.vars = 'topic')
+words[order(value,decreasing = T)]
 
+t15 <- words[order(-value), .SD[1:15], by = topic]  
+
+# plot
+topic_labels <- c(
+  "8" = "Topic 8:\nEducation",
+  "15" = "Topic 15:\nExecutive Actions", 
+  "17" = "Topic 17:\nInfrastructure",
+  "23" = "Topic 23:\nGun Violence",
+  "33" = "Topic 33:\nMilitary"
+)
+
+
+# Apply topic labels
+t10[, topic_label := topic_labels[as.character(topic)]][!is.na(topic_label)] |> 
+  ggplot(aes(x = value, y = reorder_within(variable, value, topic_label))) + 
+  geom_bar(stat = 'identity', position = 'dodge', fill = "steelblue3") + 
+  facet_wrap(~topic_label, scales = 'free', ncol = 2) +
+  scale_y_reordered() +
+  labs(title = "Top 10 Words of Selected Topics",
+       x = "Probability", y = "") +
+  theme_minimal()
+
+
+```
 
