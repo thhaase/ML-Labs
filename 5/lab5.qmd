@@ -42,14 +42,16 @@ In this lab, we will use a data set containing a random sample of public Faceboo
 
 library(quanteda)
 library(topicmodels)
+library(slam)
+
 library(word2vec)
 
 library(data.table)
+library(kableExtra)
 
 library(easystats)
 
 library(tibble)
-library(kableExtra)
 library(ggplot2)
 library(tidytext)
 
@@ -154,7 +156,7 @@ Complementing your label, please also provide a bar chart displaying on the y-ax
 #| fig-width: 7
 #| fig-height: 6
 
-get_terms(lda,15)
+# get_terms(lda,15)
 
 words <- data.table(topic = 1:K,
                     posterior(object = lda)$terms) |> 
@@ -279,8 +281,8 @@ It seems like multiple topics got recognized as one from the model. There are pr
 ```{r}
 #| label: Task1.6.2
 #| fig.align: center
-#| fig-width: 7
-#| fig-height: 6
+#| fig-width: 4
+#| fig-height: 3
 
 documents <- data.table(doc_id = lda@documents,
                         posterior(object = lda)$topics)
@@ -292,8 +294,9 @@ set.seed(5)
 documents[,-"doc_id"] |> 
   as.matrix() -> mat
 
+par(mar=c(5,10,4,2))
 mat[order(apply(mat, 1, which.max)), ] |> 
-  heatmap(Rowv = NA, Colv = NA)
+  heatmap(Rowv = NA, Colv = NA, margins = c(10, 1))
 ```
 
 The heatmap, that ordered the documents by maximum probability, shows, that the distribution over Topics is quite distinct. Only few texts have high probability in all topics. The K= 50 model captured unnecessary topics, while the K = 3 one still shows many stripes in its heatmap. These could probably make up new topics! The optimum lies somewhere inbetween 3 and 50. Just from the Interpretation the 50 topic model is more powerful because it captures more distinctions. 
@@ -312,15 +315,16 @@ Continuing with the topic model you concluded the most appropriate, perform the 
 #| fig-width: 7
 #| fig-height: 6
 
+# load 50 topic lda
 lda <- readRDS("lda.rds")
 K <- 50
+
 
 documents <- data.table(doc_id = lda@documents,
                         posterior(object = lda)$topics)
 colnames(documents)[2:ncol(documents)] <- paste0('Topic',colnames(documents)[2:ncol(documents)]) 
 
-
-
+# query for most prevalent topic
 top_topic <- documents[, -"doc_id"] |>
   colSums() |> 
   which.max() |> 
@@ -328,8 +332,16 @@ top_topic <- documents[, -"doc_id"] |>
 
 # report
 cat("Most prevalent topic:", top_topic, "\n")
+```
 
-# plot
+
+```{r}
+#| label: Task1.7.2
+#| fig.align: center
+#| fig-width: 6
+#| fig-height: 3
+
+# plot labled topics
 data.table(Topic = documents[, -"doc_id"] |>
              colSums() |>
              names(),
@@ -353,14 +365,9 @@ ggplot(aes(x = reorder(Topic, Prevalence),
 
 
 ```{r}
-#| label: Task1.7.2
-#| fig.align: center
-#| fig-width: 7
-#| fig-height: 6
+#| label: Task1.7.3
 
-# Compare the prevalence on your labeled topics between democrats and republicans. 
-# You can for 4example fit a fractional regression model using glm(family="quasibinomial") or using t-tests of difference in means. Interpret.
-
+# prepare data 
 documents <- data.table(
   doc_id = lda@documents,
   posterior(lda)$topics
@@ -370,7 +377,7 @@ colnames(documents)[2:ncol(documents)] <- paste0('Topic',colnames(documents)[2:n
 documents <- documents[, party := docvars(dfm)$party |> 
                          factor(levels = c("Democrat",
                                            "Republican"))]
-
+# filter data
 documents <- documents[, .(doc_id,party,
                            Topic2,Topic7,
                            Topic8,Topic9,
@@ -384,12 +391,23 @@ setnames(documents,
            "Crisis",
            "Infrastructure"))
 
+# calculate model
 glm <- glm(party ~ `Foreign Security` + Healthcare + 
              Education + Crisis + Infrastructure,
            family = "binomial",
            data = documents)
 
+# because quasibinomial was suggested but 
+# Im using binomial lets check overdispersion
 check_overdispersion(glm)
+```
+
+
+```{r}
+#| label: Task1.7.4
+#| fig.align: center
+#| fig-width: 6
+#| fig-height: 3
 
 glm |> 
   parameters(exponentiate = F) |> 
@@ -399,3 +417,61 @@ glm |> summary()
 ```
 
 The topics Foreign Security, Healthcare, Education and Infrastructure can distinguish between both parties statistically significant. Adressing the topic "Crisis" can not be used to distinguish between parties. 
+
+
+## Task 8
+
+BONUS (not obligatory; suggestion; do after you have completed the rest of the lab). As a bonus exercise—to expose you to the traditional computer sciency way of selecting the number of topics, K-you shall consider a data-driven approach, relying on the measure of hold-out likelihood (or, perplexity as its also called). To do so, do the following:
+
+- i. Split your document term matrix into two (a training and test set); 80/20 division.
+
+- ii. Write a loop which in each iteration (a) estimates a topic model using a particular K, and then (b) computes (and stores) its perplexity using the topicmodels function perplexity(), which takes as input the model object and the test document-term-matrix (note: the document-term-matrix needs to be transformed into a particular format: use ... for this).
+
+- iii. Consider the following range of K: ${3, 10, 25, 50, 75, 100, 200}$, and run the loop. This may take a few minutes. Once the loop has finished, plot your results (x-axis: K, y-axis: perplexity).
+
+
+Interpret. Based on this, what is a reasonable K?
+
+```{r}
+#| label: Task1.8.1
+
+rm(documents, lda, mat, t15, words, toks, corp,
+   K, top_docs, top_topic, topic_labels, varnames)
+
+# Split data
+set.seed(5)
+train_ids <- sample(seq_len(nrow(dfm)), size = floor(0.8 * nrow(dfm)))
+train_data <- dfm[train_ids, ]
+test_data <- dfm[-train_ids, ]
+```
+
+```{r}
+#| label: Task1.8.2
+
+ks <- c(3, 10, 25, 50, 75, 100, 200)
+perp <- c()
+for(i in 1:length(ks)){
+  
+  # Train
+  current_tm <- LDA(x = train_data,
+                    k = ks[i], 
+                    method="Gibbs",
+                    control=list(iter = 500, 
+                                 seed = 1, 
+                                 verbose = 100))
+  # Compute perplexity
+  perp[i] <- perplexity(object = current_tm, 
+                        newdata = as.simple_triplet_matrix(test_data)) # For some reason, perplexity() wants the test data in simple_triplet_matrix format.
+  print(perp)
+}
+
+par(mar=c(5,4,4,2)+0.1)
+plot(x=ks,y=perp,
+     type="b",
+     xlab="n Topics",
+     ylab="Perplexity",
+     main="Perplexity vs. Topic Model Topiccount")
+```
+
+Perplexity measures how well LDA models predict unseen documents, with lower scores indicating better performance and topic understanding. It measures how well the model predicts unseen or held-out documents. Since perplexity is lowest at 100 topics the facebookposts can statistically optimal be clustered into 100 topics. In a previous task it was already detected, that a K of 50 topics already contain a lot of uninterpretable ones, which is why 100 topics might be statistically optimal but useless to human interpreters. 
+
