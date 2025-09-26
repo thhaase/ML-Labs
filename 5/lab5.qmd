@@ -46,6 +46,8 @@ library(word2vec)
 
 library(data.table)
 
+library(easystats)
+
 library(tibble)
 library(kableExtra)
 library(ggplot2)
@@ -297,3 +299,103 @@ mat[order(apply(mat, 1, which.max)), ] |>
 The heatmap, that ordered the documents by maximum probability, shows, that the distribution over Topics is quite distinct. Only few texts have high probability in all topics. The K= 50 model captured unnecessary topics, while the K = 3 one still shows many stripes in its heatmap. These could probably make up new topics! The optimum lies somewhere inbetween 3 and 50. Just from the Interpretation the 50 topic model is more powerful because it captures more distinctions. 
 
 
+## Task 7
+Continuing with the topic model you concluded the most appropriate, perform the following sets of analyses: 
+
+- i. Compute the prevalence of each topic, across all documents. Report which is the most prevalent topic, overall, and then report—in the form of a single plot; e.g., a bar chart—the prevalence of the topics you labeled. 
+
+-ii. Compare the prevalence on your labeled topics between democrats and republicans. You can for example fit a fractional regression model using glm(family="quasibinomial") or using t-tests of difference in means. Interpret.
+
+```{r}
+#| label: Task1.7
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+lda <- readRDS("lda.rds")
+K <- 50
+
+documents <- data.table(doc_id = lda@documents,
+                        posterior(object = lda)$topics)
+colnames(documents)[2:ncol(documents)] <- paste0('Topic',colnames(documents)[2:ncol(documents)]) 
+
+
+
+top_topic <- documents[, -"doc_id"] |>
+  colSums() |> 
+  which.max() |> 
+  names()
+
+# report
+cat("Most prevalent topic:", top_topic, "\n")
+
+# plot
+data.table(Topic = documents[, -"doc_id"] |>
+             colSums() |>
+             names(),
+           Prevalence = documents[, -"doc_id"] |> 
+             colSums())[
+               sub("Topic", "", Topic) %in% names(topic_labels)
+               ][
+                 , Topic := topic_labels[sub("Topic", "", Topic)] 
+                 ] |> 
+ggplot(aes(x = reorder(Topic, Prevalence), 
+           y = Prevalence)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    x = "Prevalence", y = "",
+    title = "Barchart of Topicprevalences"
+  ) +
+  scale_y_continuous(breaks = seq(0, 150, 10)) +
+  theme_minimal()
+```
+
+
+```{r}
+#| label: Task1.7.2
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+# Compare the prevalence on your labeled topics between democrats and republicans. 
+# You can for 4example fit a fractional regression model using glm(family="quasibinomial") or using t-tests of difference in means. Interpret.
+
+documents <- data.table(
+  doc_id = lda@documents,
+  posterior(lda)$topics
+) 
+colnames(documents)[2:ncol(documents)] <- paste0('Topic',colnames(documents)[2:ncol(documents)]) 
+# add partyinformation
+documents <- documents[, party := docvars(dfm)$party |> 
+                         factor(levels = c("Democrat",
+                                           "Republican"))]
+
+documents <- documents[, .(doc_id,party,
+                           Topic2,Topic7,
+                           Topic8,Topic9,
+                           Topic17)]
+setnames(documents, 
+         c("Topic2","Topic7","Topic8",
+           "Topic9","Topic17"), 
+         c("Foreign Security",
+           "Healthcare",
+           "Education",
+           "Crisis",
+           "Infrastructure"))
+
+glm <- glm(party ~ `Foreign Security` + Healthcare + 
+             Education + Crisis + Infrastructure,
+           family = "binomial",
+           data = documents)
+
+check_overdispersion(glm)
+
+glm |> 
+  parameters(exponentiate = F) |> 
+  plot()
+
+glm |> summary()
+```
+
+The topics Foreign Security, Healthcare, Education and Infrastructure can distinguish between both parties statistically significant. Adressing the topic "Crisis" can not be used to distinguish between parties. 
