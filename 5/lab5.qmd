@@ -450,20 +450,30 @@ test_data <- dfm[-train_ids, ]
 
 ks <- c(3, 10, 25, 50, 75, 100, 200)
 perp <- c()
-for(i in 1:length(ks)){
+
+if(!file.exists("perplexity.rds")){
   
-  # Train
-  current_tm <- LDA(x = train_data,
-                    k = ks[i], 
-                    method="Gibbs",
-                    control=list(iter = 500, 
-                                 seed = 1, 
-                                 verbose = 100))
-  # Compute perplexity
-  perp[i] <- perplexity(object = current_tm, 
-                        newdata = as.simple_triplet_matrix(test_data)) # For some reason, perplexity() wants the test data in simple_triplet_matrix format.
-  print(perp)
+  for(i in 1:length(ks)){
+  
+    # Train
+    current_tm <- LDA(x = train_data,
+                      k = ks[i],
+                      method="Gibbs",
+                      control=list(iter = 500,
+                                   seed = 1,
+                                   verbose = 100))
+    # Compute perplexity
+    perp[i] <- perplexity(object = current_tm,
+                          newdata = as.simple_triplet_matrix(test_data)) # For some reason, perplexity() wants the test data in simple_triplet_matrix format.
+    print(perp)
+  }
+  
+  saveRDS(perp, file = "perplexity.rds")
+} else {
+  perp <- readRDS("perplexity.rds")
 }
+
+
 
 par(mar=c(5,4,4,2)+0.1)
 plot(x=ks,y=perp,
@@ -474,4 +484,179 @@ plot(x=ks,y=perp,
 ```
 
 Perplexity measures how well LDA models predict unseen documents, with lower scores indicating better performance and topic understanding. It measures how well the model predicts unseen or held-out documents. Since perplexity is lowest at 100 topics the facebookposts can statistically optimal be clustered into 100 topics. In a previous task it was already detected, that a K of 50 topics already contain a lot of uninterpretable ones, which is why 100 topics might be statistically optimal but useless to human interpreters. 
+
+
+# Part 2
+In this second part of the lab, we will continue with the data U.S. Congress–Facebook posts data set. However, now with a different focus: a focus on the word-level, using word embeddings instead of topic models.
+```{r}
+rm(list = ls())
+```
+
+
+## Task 1
+Because word embeddings are not negatively affected by stop words or other highly frequent terms, your first task is to reimport the `fb-congress-data3.csv` file, and re-process the data; performing step i–ii in task #2, but skipping #3. Here, we also do not want to transform our documents into a document-term matrix. Instead, after having tokenized and cleaned the documents, paste each back into a single string per document. Hint: for this, you could for example write: sapply(mytokens,function(x)paste(x,collapse = " ")). As a last pre-processing step, transform all your text into lowercase (hint: you can use the function tolower() for this).
+
+```{r}
+#| label: Task2.1
+
+d <- read.csv("fb-congress-data3.csv")
+
+# i
+corp <- d |> 
+  corpus(docid_field = "doc_id",
+         text_field = "message",
+         meta = list("screen_name",
+                     "party"))
+# ii
+toks <- corp |>
+  tokens(remove_punct = T,
+         remove_numbers = T,
+         remove_symbols = T,
+         remove_url = T)
+
+s <- sapply(toks,function(x)paste(x,collapse = " ")) |> 
+  tolower()
+```
+
+## Task 2
+Now we are set to fit word embeddings! To begin, let us fit one word embedding model to all documents—not separating posts by democrats and republicans. Use word2vec’s word2vec() function to fit a cbow model (type="cbow") using 15 negative samples per real context/observation (negative=15), and setting dim=50, the number of dimensions of the word vetors/embeddings. This will take a minute or two.
+
+```{r}
+#| label: Task2.2
+
+set.seed(5)
+
+if(!file.exists("wordembedding.rds")){
+  
+  we <- word2vec(x = s, type = "cbow", 
+                 iter = 50, hs = T, 
+                 negative = 15, 
+                 threads = 4)
+  
+  saveRDS(we, file = "wordembedding.rds")
+} else {
+  we <- readRDS("wordembedding.rds")
+}
+```
+
+
+## Task 3
+When the estimation in #2 is finished, identify the 10 nearest terms to 3 focal words of your choice/interest. Make sure to select words which occur frequently in your data. Hint: to retrieve the closest words in embedding/word vector space, you may use the following code: `predict(w2v,c("word2","word2","word3"),type="nearest",top_n = 10)`, where wv2 is the object storing the fitted model of the word2vec function. Does the results you find makes sense? Why/why not?
+
+```{r}
+#| label: Task2.3
+
+nearw <- predict(we, c("trump",
+                       "food",
+                       "russia"),
+                 type = "nearest",
+                 top_n = 10)
+
+nearw$trump |> kable()
+```
+
+The term "trump" has names of other leaders and leadingpositions in its nearby area. This makes intuitive sense, because trump was president in the year when the facebookposts were collected.
+
+```{r}
+#| label: Task2.3.1
+nearw$food |> kable()
+```
+
+The term "food" is surrounded by other terms that are crisis, infrastructure and ressource related. This makes intuitive sense, because food just as infrastructure is something that should be made always available by the politics in its society-steering role. Also all terms are crisis related since a crisis is often related with situations were food, ports, stores, ... is not available. Some nonsensical numbers are also in there, aswell as "comment".
+
+
+```{r}
+#| label: Task2.3.2
+nearw$russia |> kable()
+```
+
+The term "russia" is surrounded by synonyms/similar terms, aswell as "campaign","mueller", "elections", "extend" and "meddling". 
+Since russian interference in the US votings was a big topic in 2017 these associations are no s urprise. The resulting FBI investigation put pressure on trump, which is why he fired the FBI director and Robert Mueller was appointed to oversee the investigation.
+
+## Task 4
+
+What initially made people so excited about word embeddings was their surprising ability to solve seemingly complex analogy tasks. Your task now is to attempt to replicate one such classical analogy result, first with the embedding vectors that you have already estimated, and second using a pre-trained embedding model. To do so, please perform the following steps:
+
+- i. Extract the whole embedding matrix: embedding <- as.matrix(w2v).
+
+- ii. Identify the rows in the embedding matrix which correspond to king, man, woman, and create a new R object kingtowoman which is equal to the vector for king, minus the vector for man, plus the vector for woman. Hint: to extract the row corresponding to a particular word (e.g., “king”), you may use w2v[rownames(w2v)=="king",].
+
+- iii. Use word2vec’s function word2vec_similarity() to identify the 20 most similar words to kingtowoman. Do you find “queen” in the top 20? Why do you think you get the result you do? 
+
+- iv. Next, we will consider a pre-trained embedding model (trained on all Wikipedia articles that existed in 2014 and about 5 million news articles). The embedding vectors from this model are stored in the file `glove6B200d.rds` Note: this file is large; more than 300MB. Use readRDS() to import it, and stored it in an R object called pretrained. Each row stores the embedding vector for a particular word. With this info in mind, report how many embedding dimensions were used for this model, and how many words we have embedding vectors for.
+
+- v. Repeat steps ii–iii for pretrained. Does “queen” appear in the top 20 here? What do you think explains this difference/similarity to the self-trained result?
+```{r}
+#| label: Task2.4
+
+# i.
+e <- as.matrix(we)
+
+# ii.
+KING  <- e[rownames(e)=="king",]
+MAN   <- e[rownames(e)=="man",]
+WOMAN <- e[rownames(e)=="woman",]
+
+kingtowoman <- KING - MAN + WOMAN
+
+# iii
+kingtowoman <- matrix(kingtowoman, nrow = 1)
+rownames(kingtowoman) <- "kingtowoman"
+
+word2vec_similarity(kingtowoman, e, 
+                    top_n = 20, 
+                    type = "cosine") |> 
+  kable()
+```
+
+Looks like "queen" is not among the closest 20 terms!
+
+```{r}
+#| label: Task2.4.1
+
+e[rownames(e)=="queen",]
+```
+
+The reason is because queen is not part of the embeddingspace! Therefore we can only approximate where it should be but will never find it as an observation in the space.
+
+```{r}
+#| label: Task2.4.2
+
+# iv.
+pretrained <- readRDS("glove6B200d.rds")
+
+nrow(pretrained)
+ncol(pretrained)
+#pretrained[50:53,1:3]
+```
+
+The embeddingmodel contains 400000 words each with a vector of size 200.
+
+```{r}
+#| label: Task 2.4.3
+
+# v.
+
+KING  <- pretrained[rownames(pretrained)=="king",]
+MAN   <- pretrained[rownames(pretrained)=="man",]
+WOMAN <- pretrained[rownames(pretrained)=="woman",]
+
+kingtowoman <- KING - MAN + WOMAN
+
+kingtowoman <- matrix(kingtowoman, nrow = 1)
+rownames(kingtowoman) <- "kingtowoman"
+
+word2vec_similarity(kingtowoman,
+                    pretrained, 
+                    top_n = 20, 
+                    type = "cosine") |> 
+  kable()
+```
+
+Queen does indeed appear as the second term in the embeddingspace. Most of the terms appearing in the list have something to do with "king". The terms in the self-trained list deviated more since the corpus of the self trained embeddings does not contain so many words related to "king". 
+
+- vi. Given the result in (v), what do you expect, if you were to construct a measure of occupational gender bias along the lines of Garg et al. (2018), that is by comparing the distance between different occupations and gendered words, for example: occupationalbias = dist(statistician, man) – dist(statistician, woman), would this score be “more correct” than the one you would obtain from the same calculation on your facebook/congress model? Why/why not?
+
+
+
 
