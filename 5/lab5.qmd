@@ -526,17 +526,10 @@ Now we are set to fit word embeddings! To begin, let us fit one word embedding m
 
 set.seed(5)
 
-if(!file.exists("wordembedding.rds")){
-  
-  we <- word2vec(x = s, type = "cbow", 
-                 iter = 50, hs = T, 
-                 negative = 15, 
-                 threads = 4)
-  
-  saveRDS(we, file = "wordembedding.rds")
-} else {
-  we <- readRDS("wordembedding.rds")
-}
+we <- word2vec(x = s, type = "cbow", 
+               iter = 50, hs = T, 
+               negative = 15, 
+               threads = 4)
 ```
 
 
@@ -657,6 +650,223 @@ Queen does indeed appear as the second term in the embeddingspace. Most of the t
 
 - vi. Given the result in (v), what do you expect, if you were to construct a measure of occupational gender bias along the lines of Garg et al. (2018), that is by comparing the distance between different occupations and gendered words, for example: occupationalbias = dist(statistician, man) – dist(statistician, woman), would this score be “more correct” than the one you would obtain from the same calculation on your facebook/congress model? Why/why not?
 
+What is correct depends a lot on the question and context. In general the wikipediacorpus is a larger and more general dataset which could be interesting to research because of that. The genderbias vector in this wikipediadataset would then be a "very correct" measure of itself. On the other hand in our own facebook dataset a similar question would be possible to answer in the same way. Since the data is more sparse/smaller its harder to trust the results. During the calculation the words place themselves in relation to all other words. If there are less words the uncertainty of its position is generally higher.
 
 
+## Task 5 
+
+Now we shall make a comparison between democrats and republicans. Split the data from step #1 into two based on party affiliation. Then, repeat 2–3, but now separately for republicans and democrats. For #3, select words which you expect might be used differently between the two political camps (but still are frequently used by both; for example “abortion”, “obamacare”). Do you find any differences? Do they align with your expectations?
+
+```{r}
+#| label: Task2.5
+
+# Split data
+toks_dem <- toks[which(toks$party == "Democrat"), ]
+toks_rep <- toks[which(toks$party == "Republican"), ]
+
+s_dem <- sapply(toks_dem, function(x)paste(x,collapse = " ")) |> 
+  tolower()
+s_rep <- sapply(toks_rep, function(x)paste(x,collapse = " ")) |> 
+  tolower()
+
+
+# word2vec
+set.seed(5)
+
+we_dem <- word2vec(x = s_dem, 
+                   type = "cbow",
+                   iter = 50, hs = T,
+                   negative = 15,
+                   threads = 4)
+
+we_rep <- word2vec(x = s_rep, 
+                   type = "cbow",
+                   iter = 50, hs = T,
+                   negative = 15,
+                   threads = 4)
+
+# get nearby words
+nw_dem <- predict(we_dem,
+                  c("trump",
+                    "food",
+                    "russia"),
+                  type = "nearest",
+                  top_n = 10)
+
+nw_rep <- predict(we_rep,
+                  c("trump",
+                    "food",
+                    "russia"),
+                  type = "nearest",
+                  top_n = 10)
+
+
+nw_dem$trump |> kable()
+nw_rep$trump |> kable()
+
+nw_dem$food |> kable()
+nw_rep$food |> kable()
+
+nw_dem$russia |> kable()
+nw_rep$russia |> kable()
+```
+
+# INTERPRETATION MISSING
+
+
+## Task 6 
+```{r}
+#| label: Task2.6
+rm(d,pretrained,corp,KING,MAN,WOMAN)
+
+# read wordlists
+pos <- readLines("positive.txt")
+neg <- readLines("negative.txt")
+
+# get embedding matrices
+e_dem <- as.matrix(we_dem)
+e_rep <- as.matrix(we_rep)
+
+
+# Create the projection:
+# 1) Extract the relevant word vectors from the "embedding" matrix and 
+# compute averages
+posv_dem <- e_dem[which(rownames(e_dem) %in% pos),]|> 
+  apply(2,mean) |> 
+  as.matrix() |> 
+  t()
+negv_dem <- e_dem[which(rownames(e_dem) %in% neg),]|> 
+  apply(2,mean) |> 
+  as.matrix() |> 
+  t()
+
+posv_rep <- e_rep[which(rownames(e_rep) %in% pos),] |> 
+  apply(2,mean) |> 
+  as.matrix() |> 
+  t()
+negv_rep <- e_rep[which(rownames(e_rep) %in% neg),] |> 
+  apply(2,mean) |> 
+  as.matrix() |> 
+  t()
+
+# 2) Compute the difference to get the dimension
+neg_pos_dem <- negv_dem - posv_dem
+neg_pos_rep <- negv_rep - posv_rep
+
+neg_assoc_terms_dem <- word2vec::word2vec_similarity(x = neg_pos_dem, 
+                                                 y = e_dem[-which(rownames(e_dem) %in% pos),],
+                                                 top_n = 10000) # get distance to all words
+neg_assoc_terms_rep <- word2vec::word2vec_similarity(x = neg_pos_rep, 
+                                                 y = e_rep[-which(rownames(e_rep) %in% pos),],
+                                                 top_n = 10000) # get distance to all words
+  
+neg_assoc_terms_dem[,-1] |> 
+  head(50) |> 
+  kable()
+
+neg_assoc_terms_rep[,-1] |> 
+  head(50) |> 
+  kable()
+
+
+word_negativity <- function(df,word){
+  df[which(df$term2 == word),]
+}
+
+word_negativity(neg_assoc_terms_dem, "obama")$rank
+word_negativity(neg_assoc_terms_rep, "obama")$rank
+
+word_negativity(neg_assoc_terms_dem, "russia")$rank
+word_negativity(neg_assoc_terms_rep, "russia")$rank
+
+word_negativity(neg_assoc_terms_dem, "war")$rank
+word_negativity(neg_assoc_terms_rep, "war")$rank
+```
+
+## Task 7
+
+```{r}
+#| label: Task2.7
+
+bootstrap <- function(corp, B = 20, word){
+
+  B <- B # number of bootstraps (minimum of 20 for 90% confidence interval)
+  word_ranks <- c() # to store each bootstrap's rank
+  for(b in 1:B){
+  
+    # Sample documents ids with replacement (= creating the b'th bootstrap sample)
+    row_ids <- 1:nrow(corp)
+    bootstrap_b_ids <- sample(x = row_ids, size = nrow(bernie_trump), replace = TRUE)
+    bootstrap_b_data <- bernie_trump[bootstrap_b_ids,]
+
+    # Make into corpus
+    posts_corpus <- corpus(x = bootstrap_b_data, # Here we insert the boostraped data for this iteration
+                           text_field = "text",
+                           meta = list("username"),
+                           docid_field = 'doc_id')
+    
+    # Tokenize & clean from particular types of words
+    mytokens <- tokens(x = posts_corpus, 
+                       remove_punct = TRUE, 
+                       remove_numbers = TRUE, 
+                       remove_symbols = TRUE,
+                       remove_url = TRUE,
+                       padding = FALSE)
+    mytokens <-   tokens_select(x = mytokens,selection = 'remove',
+                                valuetype = 'glob', 
+                                pattern = '@', 
+                                padding = FALSE)
+    
+    # Make tokens lowercase
+    mytokens <- tokens_tolower(x = mytokens)
+    
+    # Collapse into strings within documents
+    txt <- sapply(mytokens,function(x)paste(x,collapse = ' '))
+    txt <- tolower(txt)
+    
+    # Fit word embeddings
+    set.seed(123456789)
+    system.time(w2v <- word2vec(x = txt,          # Your data 
+                                type = "cbow",    # Model type (the one we talked about in lecture)
+                                window = 5,       # Context defined in terms of +-5 words.
+                                dim = 50,         # Dimensionality of embeddings
+                                iter = 50,        # Estimation iterations (higher means more time...)
+                                hs = FALSE,       # Setting to FALSE here --> "negative sampling procedure"
+                                negative = 15))   # Number of negative samples
+    
+    # Pos/neg list (these could also have been imported before the loop)
+    pos_terms <- fread('positive.txt',header = F)
+    neg_terms <- fread('negative.txt',header = F)
+    
+    # Extract the whole embedding matrix
+    embedding <- as.matrix(w2v)
+    
+    # Create the projection:
+    # 1) Extract the relevant word vectors from the "embedding" matrix
+    pos_vectors <- embedding[which(rownames(embedding) %in% pos_terms$V1),]
+    neg_vectors <- embedding[which(rownames(embedding) %in% neg_terms$V1),]
+    # 2) Compute the average across each and keep matrix format
+    pos_vector <- as.matrix(apply(pos_vectors,2,mean))
+    neg_vector <- as.matrix(apply(neg_vectors,2,mean))
+    # 3) Transform to get 1 x K
+    pos_vector <- t(pos_vector)
+    neg_vector <- t(neg_vector)
+    # 4) Compute the difference to get a gender dimension
+    neg_pos_dimension <- neg_vector - pos_vector
+    
+    # Identify (and store) similarity rank (to sentiment dimension) for the word "fbi"
+    neg_assoc_terms <- word2vec::word2vec_similarity(x = neg_pos_dimension, 
+                                                     y = embedding[-which(rownames(embedding) %in% pos_terms$V1),], 
+                                                     top_n = 10000) # Set this to a large value to get distance to all words
+    neg_assoc_terms <- as.data.table(neg_assoc_terms)
+    word_ranks[b] <- neg_assoc_terms[term2==word]$rank
+    
+    # Print iteration
+    print(paste0('Bootstrap ',b,' finished. Rank: ', word_ranks[b]))
+  }
+  
+  
+}
+
+```
 
