@@ -1,5 +1,5 @@
 ---
-title: "Lab 4"
+title: "Lab 5"
 subtitle: ""
 author: "Thomas Haase"
 date: last-modified
@@ -530,6 +530,7 @@ we <- word2vec(x = s, type = "cbow",
                iter = 50, hs = T, 
                negative = 15, 
                threads = 4)
+
 ```
 
 
@@ -544,6 +545,8 @@ nearw <- predict(we, c("trump",
                        "russia"),
                  type = "nearest",
                  top_n = 10)
+
+
 
 nearw$trump |> kable()
 ```
@@ -703,16 +706,23 @@ nw_rep <- predict(we_rep,
 
 nw_dem$trump |> kable()
 nw_rep$trump |> kable()
+```
 
+Both in the republicans and democrat wordembedding "trump" appears in the recion of obama, vice and other leaders. 
+
+```{r}
 nw_dem$food |> kable()
 nw_rep$food |> kable()
+```
 
+Food is connected to crisis and life related terms for both parties. 
+
+```{r}
 nw_dem$russia |> kable()
 nw_rep$russia |> kable()
 ```
 
-# INTERPRETATION MISSING
-
+For the term "Russia" a meaningful difference in framing is observable. Democrats associate russia with more negative terms like obstruction, or question credibility. Also the "mueller" incident discussed in a previous task is appearing here. Republicans associate russia with terms regarding the war, but not necesarry negativly. imposing, unleaching, efficiency is a neutral and almost a careful positive framing.
 
 ## Task 6 
 ```{r}
@@ -772,101 +782,32 @@ neg_assoc_terms_rep[,-1] |>
 word_negativity <- function(df,word){
   df[which(df$term2 == word),]
 }
+```
 
+
+```{r}
 word_negativity(neg_assoc_terms_dem, "obama")$rank
 word_negativity(neg_assoc_terms_rep, "obama")$rank
+```
 
+"Obama" is more negativly associated in the republican embedding space compared to the democrats embedding space ("obama" has a higher rank on the constructed negativity "scale"). 
+
+```{r}
 word_negativity(neg_assoc_terms_dem, "russia")$rank
 word_negativity(neg_assoc_terms_rep, "russia")$rank
+```
 
+"Russia"s rank is almmost similar for both parties, but the republicans are a bit more negative about it.
+
+```{r}
 word_negativity(neg_assoc_terms_dem, "war")$rank
 word_negativity(neg_assoc_terms_rep, "war")$rank
 ```
 
-## Task 7
+"War" has a much higher negativity rank in the republican wordembedding model. Are democrats in favour of war? Probably not. 
 
 ```{r}
-#| label: Task2.7
-
-bootstrap <- function(corp, B = 20, word){
-
-  B <- B # number of bootstraps (minimum of 20 for 90% confidence interval)
-  word_ranks <- c() # to store each bootstrap's rank
-  for(b in 1:B){
-  
-    # Sample documents ids with replacement (= creating the b'th bootstrap sample)
-    row_ids <- 1:nrow(corp)
-    bootstrap_b_ids <- sample(x = row_ids, size = nrow(bernie_trump), replace = TRUE)
-    bootstrap_b_data <- bernie_trump[bootstrap_b_ids,]
-
-    # Make into corpus
-    posts_corpus <- corpus(x = bootstrap_b_data, # Here we insert the boostraped data for this iteration
-                           text_field = "text",
-                           meta = list("username"),
-                           docid_field = 'doc_id')
-    
-    # Tokenize & clean from particular types of words
-    mytokens <- tokens(x = posts_corpus, 
-                       remove_punct = TRUE, 
-                       remove_numbers = TRUE, 
-                       remove_symbols = TRUE,
-                       remove_url = TRUE,
-                       padding = FALSE)
-    mytokens <-   tokens_select(x = mytokens,selection = 'remove',
-                                valuetype = 'glob', 
-                                pattern = '@', 
-                                padding = FALSE)
-    
-    # Make tokens lowercase
-    mytokens <- tokens_tolower(x = mytokens)
-    
-    # Collapse into strings within documents
-    txt <- sapply(mytokens,function(x)paste(x,collapse = ' '))
-    txt <- tolower(txt)
-    
-    # Fit word embeddings
-    set.seed(123456789)
-    system.time(w2v <- word2vec(x = txt,          # Your data 
-                                type = "cbow",    # Model type (the one we talked about in lecture)
-                                window = 5,       # Context defined in terms of +-5 words.
-                                dim = 50,         # Dimensionality of embeddings
-                                iter = 50,        # Estimation iterations (higher means more time...)
-                                hs = FALSE,       # Setting to FALSE here --> "negative sampling procedure"
-                                negative = 15))   # Number of negative samples
-    
-    # Pos/neg list (these could also have been imported before the loop)
-    pos_terms <- fread('positive.txt',header = F)
-    neg_terms <- fread('negative.txt',header = F)
-    
-    # Extract the whole embedding matrix
-    embedding <- as.matrix(w2v)
-    
-    # Create the projection:
-    # 1) Extract the relevant word vectors from the "embedding" matrix
-    pos_vectors <- embedding[which(rownames(embedding) %in% pos_terms$V1),]
-    neg_vectors <- embedding[which(rownames(embedding) %in% neg_terms$V1),]
-    # 2) Compute the average across each and keep matrix format
-    pos_vector <- as.matrix(apply(pos_vectors,2,mean))
-    neg_vector <- as.matrix(apply(neg_vectors,2,mean))
-    # 3) Transform to get 1 x K
-    pos_vector <- t(pos_vector)
-    neg_vector <- t(neg_vector)
-    # 4) Compute the difference to get a gender dimension
-    neg_pos_dimension <- neg_vector - pos_vector
-    
-    # Identify (and store) similarity rank (to sentiment dimension) for the word "fbi"
-    neg_assoc_terms <- word2vec::word2vec_similarity(x = neg_pos_dimension, 
-                                                     y = embedding[-which(rownames(embedding) %in% pos_terms$V1),], 
-                                                     top_n = 10000) # Set this to a large value to get distance to all words
-    neg_assoc_terms <- as.data.table(neg_assoc_terms)
-    word_ranks[b] <- neg_assoc_terms[term2==word]$rank
-    
-    # Print iteration
-    print(paste0('Bootstrap ',b,' finished. Rank: ', word_ranks[b]))
-  }
-  
-  
-}
-
+kwic(toks_dem, "war", window = 5) |> kable()
 ```
 
+A quick keyword in context (kwic) analysis shows that democrats honor heroes and vctims of war, aswell as criticising republican war involvement.
