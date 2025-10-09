@@ -54,6 +54,9 @@ library(randomForest)
 
 library(caret)
 
+library(htetree)
+library(grf)
+
 set.seed(5)
 
 setwd("~/Github/ML-Labs/6")
@@ -240,7 +243,81 @@ The used models assume all confounding variables are included in the model. Sinc
 
 # Part 2: Heterogeneity I
 
+The dataset "scholarship.csv" contains information about 15,000 students who either received or did not receive a college scholarship, including:
+- scholarship: Binary indicator of scholarship receipt (treatment)
+- completed: Binary indicator of degree completion within 6 years (outcome)
+- gpa: High school GPA (scale 0-4)
+- parental_income: Parental income in thousands of dollars
+- first_generation: Binary indicator of first-generation college student status
+- sat_score: SAT score (scale 400-1600)
+- distance_to_college: Distance from home to college in miles
+- financial_need: Measure of financial need (scale 0-100)
+
+```{r}
+#| label: Setup Part 2
+
+rm(list = ls())
+
+d <- data_read("scholarship.csv")
+```
 
 
+## Task 1
+Suppose your co-author, who has done a careful literature review, has found support for two of the variables, first_generation and financial_need, having a moderating effect. What you shall do first is examine whether you find evidence of this in your data. Implement a standard linear regression using lm() (or glm() if you prefer logistic regression) with the treatment variable as well as all other input variables (presumed confounders) included, with first_generation and financial_need interacted with the treatment variable. Report your findings: do you find evidence supporting your colleague’s conclusion from the literature?
+
+```{r}
+#| label: Task 2.1
+
+m1 <- lm(completed ~ scholarship + gpa + parental_income +
+         first_generation + sat_score + distance_to_college + financial_need +
+         scholarship:first_generation + scholarship:financial_need, 
+         data = d)
+
+m1 |> report_table() |> summary() |> print_md()
+m1 |> parameters() |> plot(show_intercept = T)
+```
+
+My co-author is partly right: 
+- "first generation" has a statistically significant positive interaction effect
+- "financial need" has a statistically significant positive interaction effect, but it is so tiny that the significance is probably due to the large observation size. It does not seem to exist.
+
+
+## Task 2
+
+Considering what we discussed in the lecture, what is one limitation of this standard approach to effect heterogeneity? What are properties of the data (or state of the field) that could make this limitation more or less problematic?
+
+# INTERPRET HERE
+
+## Task 3
+Next, you shall consider an alternative approach to effect heterogeneity, using causal trees. At a high level, describe what is the key difference in assumption we make when using causal trees compared to the traditional approach?
+
+# INTERPRET HERE
+
+## Task 4
+Perform a causal tree analysis by doing the following:
+
+a. Estimate the causal tree using the function causalTree() from the htetree package, specifying the formula as in #1 (except drop the interactions and leave out the treatment variable; the latter is specified separately). Use the following parameters: split.Rule="CT", cv.option="CT", split.Honest=TRUE, split.Bucket=TRUE, minsize=60, cp=0, bucketNum=40.
+
+b. Visualize the tree using rpart.plot() and describe the combination of splits which identify the population with (a) the largest treatment effect and (b) the smallest.
+
+c. Suppose our dataset is a standard observational dataset common to the social sciences, e.g., a survey dataset of a random sample of the population. Given this information, what could be a potential threat to the validity of our causal tree results?
+
+```{r}
+#| label: Task 2.4
+
+# a. FINISH SPECIFYING
+m2 <- causalTree(
+  completed ~ gpa + parental_income +
+         first_generation + sat_score + distance_to_college + financial_need,
+  data      = d,
+  treatment = d$scholarship,
+  split.Rule = "CT", split.Honest = T, 
+  cv.option = "CT", cv.Honest = T,    
+  split.Bucket = T, bucketNum = 40, 
+  minsize = 60,      # minimum number of obs in a node to allow split
+  xval = 5        # number of CV folds
+)
+
+```
 
 
