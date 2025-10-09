@@ -1,0 +1,246 @@
+---
+title: "Lab 6"
+subtitle: ""
+author: "Thomas Haase"
+date: last-modified
+date-format: long
+ 
+execute:
+  warning: false
+  echo: true
+  error: false
+   
+format: 
+  typst:
+    toc: true
+    papersize: a4
+    fig-align: center
+    margin:
+      left: 2cm
+      right: 2cm
+      top: 2cm
+      bottom: 3cm
+    columns: 1
+
+editor_options: 
+  chunk_output_type: console
+---
+
+---
+
+# Part 1: Meta-learners for job training evaluation
+
+The dataset "job_training_updated.csv" contains information about 12,000 individuals who either participated or did not participate in a job training program, including:
+- training: Binary indicator of whether individual participated in training (treatment)
+- earnings: Post-training annual earnings in thousands of dollars (outcome)
+- age: Age of individual
+- education: Years of education
+- prior_earnings: Earnings before training program
+- employment_history: Years of prior employment
+- urban: Binary indicator of urban residence
+
+```{r}
+#| label: Setup Environment
+
+library(easystats)
+library(data.table)
+library(kableExtra)
+
+library(rpart)
+library(rpart.plot)
+
+
+library(randomForest)
+
+library(caret)
+
+set.seed(5)
+
+setwd("~/Github/ML-Labs/6")
+```
+
+## Task 1
+1. Fit regular OLS regression using lm(), including all non-treatment and non-outcome variables as control variables. Interpret the coefficient for the treatment variable as the average treatment effect. Considering what we talked about in the lecture, what properties of the data would lead you to believe your estimate is biased? Motivate.
+
+```{r}
+#| label: Task 1.1
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 6
+
+d <- data_read("job_training_updated.csv")
+
+m1 <- lm(earnings ~ training + age + education + 
+         prior_earnings + employment_history + urban, d) 
+
+m1 |> report_table() |> summary() |> print_md()
+```
+
+The ATE of the treatment variable `training` on earnings is very large. Despite the statistical significance the model could be improved by causal modeling. The standard paradigm is problematic because it lacks assumes linearity. In case a confounder is non-linear the estimate will be biased.
+
+## Task 2
+Next, you shall estimate an orthogonal learner, using decision trees as the method for predicting both the treatment and the outcome. Please follow the following steps:
+
+- a. Train a decision tree model using rpart() to predict training from all confounders using the full dataset. For classification trees, use method="class" and for the control parameters use: cp=0, minbucket=5, maxdepth=30
+ (i.e.,  control=rpart::rpart.control(cp=0,minbucket=5, maxdepth=30)).
+ 
+- b. Train a decision tree model using rpart() to predict earnings from all confounders using the full dataset. For regression trees, use method="anova" and the same control parameters: cp=0, minbucket=5, maxdepth=30  (i.e.,  control=rpart::rpart.control(cp=0,minbucket=5, maxdepth=30)).
+
+- c. Make predictions of treatment (using model from a, with type="prob") and outcome (using model from b) for all observations.
+
+- d. Calculate residuals for all observations: X_tilde = X - X_hat, Y_tilde = Y - Y_hat.
+
+- e. Estimate the ATE by regressing Y_tilde on X_tilde using lm().
+
+- f. Report the ATE. How does it compare to your OLS estimate in #1?
+
+- g. Which of the two methods do you trust more? Can you think of any aspect of the implementation of the orthogonal learner which could bias its estimate?
+
+
+```{r}
+#| label: Task 1.2
+
+# a
+m_X <- rpart(training ~ age + education + prior_earnings +
+               employment_history + urban, d, method = "class",
+             control = rpart.control(cp = 0, minbucket = 5,
+                                     maxdepth = 30)) 
+# b
+m_Y <- rpart(earnings ~ age + education + prior_earnings +
+               employment_history + urban, d, method = "anova",
+             control = rpart.control(cp = 0, minbucket = 5,
+                                     maxdepth = 30)) 
+# c
+X_hat <- predict(m_X, newdata = d[3:7], type="prob")[,"1"]
+Y_hat <- predict(m_Y, newdata = d[3:7])
+
+# d
+residuals <- data.frame(X = d$training - X_hat,
+                        Y = d$earnings - Y_hat)
+
+# e
+m_ate <- lm(Y ~ X, residuals)
+
+# f
+m_ate |> parameters() |> print_md()
+m_ate |> report_parameters(include_intercept = F)
+```
+
+
+## Task 3
+
+Given your conclusions in 2, do you think either of the following two changes to the setup of the orthogonal learner could improve the ATE estimate? (i) switching from a decision tree to a random forest, (ii) add cross-fitting. Motivate.
+
+Cross-fitting means to predict out-of-fold to block contamination whereby the orthogonal learner does not bias the residuals in hold-out towards 0. To adress the high variance of the trees by prohibiting the most important variables to dominate the trees. The negative aspect of forests that they are less interpretable is not relevant here since we are only interested in predicting the effect of the confounders to X and Y. 
+
+
+## Task 4
+
+Now you shall implement the two updates discussed in 3. Please do the following:
+
+ a. Divide your data into 5 folds (hint: you can use createFolds() from the caret package).
+ b. Create a for-loop which in each iteration i does the following:
+    i. Train a random forest model using randomForest() (with ntree=200 and mtry=2) predicting training from confounders on data in folds = i.
+    ii. Train a random forest model using randomForest() (with ntree=200 and mtry=2) predicting earnings from confounders on data in folds = i.
+    iii. Use models from (i) and (ii) to predict treatment (with type="prob") and outcome for ob- servations in fold i.
+    iv. Calculate residuals X_tilde and Y_tilde for observations in fold i.
+    v. Store residuals from fold i.
+ c. Combine dataset of residuals and regress Y_tilde on X_tilde using lm().
+ d. Report the estimated ATE. Do you trust this estimate more than those in 2, and if so why (or why not)?
+ 
+ 
+```{r}
+#| label: Task 1.4
+
+if(file.exists("Task_1_4.rds")){
+  residuals <- readRDS("Task_1_4.rds")
+} else{
+
+  # a
+  ids_folds <- createFolds(d$earnings, k = 5)
+  residuals_list <- list()  
+  
+  # b
+  for(i in seq_along(ids_folds)){
+    
+    ids_test <- ids_folds[[i]]
+    
+    cat("------------------------------\n
+        Start Iteration", i, "\nSplitting Data\n")
+    
+    testdata <- d[ids_test,] |> 
+      as.data.frame() |> 
+      data_select(c("age","education","prior_earnings",
+                    "employment_history","urban",
+                    "training","earnings"))
+    
+    trainingdata <- d[-ids_test,] |> 
+      as.data.frame() |> 
+      data_select(c("age","education","prior_earnings",
+                    "employment_history","urban",
+                    "training","earnings"))
+    
+    confounders <- c("age","education","prior_earnings",
+                    "employment_history","urban")
+    
+    # i
+    cat("Calculate RF for X\n")
+    m_X <- randomForest(x = trainingdata[,confounders],
+                        y = trainingdata$training,
+                        ntree = 200, mtry = 2) 
+    # ii
+    cat("Calculate RF for Y\n")
+    m_Y <- randomForest(x = trainingdata[,confounders],
+                        y = trainingdata$earnings,
+                        ntree = 200, mtry = 2) 
+    # iii
+    cat("Predict Testdata\n")
+    X_hat <- predict(m_X, newdata = testdata[,confounders])
+    Y_hat <- predict(m_Y, newdata = testdata[,confounders])
+    
+    # iv
+    cat("Store Residuals\n")
+    residuals_list[[i]] <- data.frame(
+      fold = i,
+      original_index = ids_test,
+      X = testdata$training - X_hat,
+      Y = testdata$earnings - Y_hat
+    )
+  }
+  
+  residuals <- do.call(rbind, residuals_list)
+  residuals <- residuals[order(residuals$original_index), ]  
+  
+  saveRDS(residuals,"Task_1_4.rds")
+}
+
+
+# c
+m_ate <- lm(Y ~ X, residuals)
+
+# f
+m_ate |> parameters() |> print_md()
+m_ate |> report_parameters(include_intercept = F)
+```
+ 
+I trust this estimate more then the ones before since random forest prevents overfitting the ATE is not biased towards 0 anymore. Because of that the RF ATE is a bit larger then the decisiontree ATE. 
+
+
+## Task 5
+
+Suppose we learn that the true average treatment effect is 5.5 thousand dollars. Report which method
+came closest, and discuss what this says about the properties of the data—in particular the relation
+between the confounders and the treatment and outcome. 
+ 
+The used models assume all confounding variables are included in the model. Since the true ATE is so different from the estimated ones not all confounding variables were included in the model. This points the researcher towards theorybuilding :) 
+
+```{=typst}
+#pagebreak()
+```
+
+# Part 2: Heterogeneity I
+
+
+
+
+

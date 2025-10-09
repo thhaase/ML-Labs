@@ -58,14 +58,15 @@ print(summary(ols)$coef["ad", , drop = FALSE])
 # (3) Orthogonal learner with RF: 
 # > Without cross-fitting
 # ----------------------------
-covars <- c('ad','price', 'discount', 'comp_price', 'rating', 'traffic', 
-            'weekend', 'season', 'category')
+# covars <- c('ad','price', 'discount', 'comp_price', 'rating', 'traffic', 
+#             'weekend', 'season', 'category')
 set.seed(1)
 rf_m_in <- randomForest(x=as.data.frame(ads[, -c('ad','sales'),with=F]), y=as.factor(ads$ad), ntree=250, mtry=2)
 rf_g_in <- randomForest(x=as.data.frame(ads[, -c('ad','sales'),with=F]), y=ads$sales, ntree=250, mtry=2)
-mhat_in <- predict(rf_m_in, newdata=as.data.frame(ads[, ..covars]), type="prob")[,"1"]
-ghat_in <- predict(rf_g_in, newdata=as.data.frame(ads[, ..covars]))
-ads[, `:=`(X_tilde_in = ad - mhat_in, Y_tilde_in = sales - ghat_in)]
+mhat_in <- predict(rf_m_in, newdata=as.data.frame(ads[, -c('ad','sales'),with=F]), type="prob")[,"1"]
+ghat_in <- predict(rf_g_in, newdata=as.data.frame(ads[, -c('ad','sales'),with=F]))
+ads[, `:=`(X_tilde_in = ad - mhat_in, 
+           Y_tilde_in = sales - ghat_in)]
 orth_rf <- lm(Y_tilde_in ~ X_tilde_in, data=ads)
 summary(orth_rf)
 
@@ -97,7 +98,7 @@ ct <- causalTree(
   sales ~ price + discount + comp_price + rating + traffic + 
                   endcap + weekend + factor(season) + category,
   data      = as.data.frame(ads),
-  treatment = ads$ad,
+  treatment = ads$ad, 
   split.Rule   = "CT",    # treatment-effect splits
   split.Honest = TRUE,    # honest splitting/estimation (default: 50/50)
   cv.option    = "CT",    # cross-validate complexity
