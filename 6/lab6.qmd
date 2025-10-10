@@ -286,12 +286,13 @@ My co-author is partly right:
 
 Considering what we discussed in the lecture, what is one limitation of this standard approach to effect heterogeneity? What are properties of the data (or state of the field) that could make this limitation more or less problematic?
 
-# INTERPRET HERE
+Research frequently find that the effect of events, exposures, policies (etc) vary across individuals. Usually interactionterms are implemented in the model with the selection of subgroups being based on theory or convention. Limitations of this procedure are that it assumes we know moderators beforehand. While exploratory analysis could help it creates risk of p-hacking and is not feasable for data with too many variables.
 
 ## Task 3
 Next, you shall consider an alternative approach to effect heterogeneity, using causal trees. At a high level, describe what is the key difference in assumption we make when using causal trees compared to the traditional approach?
 
-# INTERPRET HERE
+Causal trees identify the splits that maximize across-leaf variation in the within-leaf treated–untreated outcome difference. Standard trees just minimize the variance in the leaves. Using trees solves the problem above since they include the most relevant interactions by design.
+
 
 ## Task 4
 Perform a causal tree analysis by doing the following:
