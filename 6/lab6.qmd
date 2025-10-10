@@ -67,9 +67,6 @@ setwd("~/Github/ML-Labs/6")
 
 ```{r}
 #| label: Task 1.1
-#| fig.align: center
-#| fig-width: 7
-#| fig-height: 6
 
 d <- data_read("job_training_updated.csv")
 
@@ -305,20 +302,52 @@ c. Suppose our dataset is a standard observational dataset common to the social 
 
 ```{r}
 #| label: Task 2.4
+#| fig.align: center
+#| fig-width: 15
+#| fig-height: 10
+#| fig-caption: "Causal Tree"
 
-# a. FINISH SPECIFYING
-m2 <- causalTree(
-  completed ~ gpa + parental_income +
-         first_generation + sat_score + distance_to_college + financial_need,
-  data      = d,
-  treatment = d$scholarship,
-  split.Rule = "CT", split.Honest = T, 
-  cv.option = "CT", cv.Honest = T,    
-  split.Bucket = T, bucketNum = 40, 
-  minsize = 60,      # minimum number of obs in a node to allow split
-  xval = 5        # number of CV folds
-)
+# a. 
+set.seed(5)
+if(file.exists("task2_4.rds")){
+  m2 <- readRDS("task2_4.rds")
+  } else {
+    
+    m2 <- causalTree(
+      completed ~ gpa + parental_income +
+             first_generation + sat_score + distance_to_college + financial_need,
+      data      = d,
+      treatment = d$scholarship,
+      split.Rule = "CT", cv.option = "CT", 
+      split.Honest = T, split.Bucket = T, 
+      minsize = 60, cp = 0.00001, bucketNum = 40
+    )
+    
+    saveRDS(m2, "task2_4.rds")
+}
 
+# b
+m2 |> rpart.plot()
 ```
+
+The population with the biggest treatment effect are students with 
+- no first generation student
+- have a financial need of at least 68
+- have a gpa below 2.9
+
+The population with the smallest treatment effect are students with
+- the first generation
+- sat score of less than 932
+- distance to college of more than 15 miles
+- gpa below 2.9
+
+c. We included all variables, so we suppose all variables have an influence on the outcome, but that is not necessarily so.
+
+
+## Task 5
+Given potential concerns of selection bias, you shall next examine the potential imbalance of treated and untreated observations inside different leaves. To do so, please follow these steps (Hint: various code-chunks are provided that may be helpful):
+
+a. Estimate a propensity score model—a standard logistic regression model using glm() with family=binomial()—predicting the treatment variable based on the confounders. Specify type="response" in the predict() function.
+
 
 
