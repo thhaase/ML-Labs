@@ -349,5 +349,61 @@ Given potential concerns of selection bias, you shall next examine the potential
 
 a. Estimate a propensity score model—a standard logistic regression model using glm() with family=binomial()—predicting the treatment variable based on the confounders. Specify type="response" in the predict() function.
 
+b. Calculate the mean and standard deviation of the propensity scores within each leaf and treatment group combination. (Hint: use $where to extract leaf assignments)
 
+c. Based on the mean and standard deviation, calculate the standardized difference in means measure within each leaf. What do these indicate about your results in #4?
+
+```{r}
+#| label: Task 2.5
+
+# a
+m_ps <- glm(scholarship ~ gpa + parental_income +
+              first_generation + sat_score +
+              distance_to_college + financial_need,
+            family = "binomial",
+            data = d)
+
+d$ps_hat <- m_ps |> 
+  predict(type = "response") |> 
+  as.numeric()
+
+# b
+d <- data.table(d)
+
+d$leaf <- factor(m2$where)
+
+leaf_group_long <- d[, .(
+  n       = .N,
+  mean_ps = mean(ps_hat),
+  sd_ps   = sd(ps_hat)
+  ), by = .(leaf, scholarship)]
+
+leaf_group_stats <- data.table::dcast(
+  leaf_group_long,
+  leaf ~ scholarship,
+  value.var = c("n", "mean_ps", "sd_ps"),
+  fill = NA_real_
+  )
+
+# c
+leaf_balance <- copy(leaf_group_stats)[
+  , `:=`(
+    SMD_ps = {
+      denom <- sqrt((sd_ps_1^2 + sd_ps_0^2)/2)
+      ifelse(is.finite(denom) & denom > 0,
+             abs(mean_ps_1 - mean_ps_0) / denom, NA_real_)
+      }
+    )
+  ][order(-SMD_ps)]
+
+leaf_balance |> kable()
+```
+
+The in c calculated standardized mean difference of propensity scores indicates how comparable the groups in each leaf are. 
+The propensity score is calculated in the beginning to assess similarity of observations. 
+the `mean_ps_0` and `mean_ps_1` variable are the mean propensity scores for the treatment and control group. Together with the standard deviation of each leaf it is possible to calculate the difference between both groups for each leaf. Therefore leafs with a high balance (small SMD) are well comparable, while leafs with high imbalance (high SMD) differ in their treatment probability. 
+
+
+## Task 6
+Given your findings in the previous task, you shall next do a causal tree analysis wherein you incorporate inverse probability weighting. To do so, please do the following:
 
