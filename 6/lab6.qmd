@@ -355,6 +355,10 @@ c. Based on the mean and standard deviation, calculate the standardized differen
 
 ```{r}
 #| label: Task 2.5
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
 
 # a
 m_ps <- glm(scholarship ~ gpa + parental_income +
@@ -397,13 +401,177 @@ leaf_balance <- copy(leaf_group_stats)[
   ][order(-SMD_ps)]
 
 leaf_balance |> kable()
+
+leaf_balance$SMD_ps |> 
+  barplot(main = "Propensityscore difference per leaf")
 ```
 
 The in c calculated standardized mean difference of propensity scores indicates how comparable the groups in each leaf are. 
 The propensity score is calculated in the beginning to assess similarity of observations. 
 the `mean_ps_0` and `mean_ps_1` variable are the mean propensity scores for the treatment and control group. Together with the standard deviation of each leaf it is possible to calculate the difference between both groups for each leaf. Therefore leafs with a high balance (small SMD) are well comparable, while leafs with high imbalance (high SMD) differ in their treatment probability. 
 
+Only 4 leafs have a propensity score difference lower than 0.2! Most leafs do not allow a sufficient comparison of groups!
 
 ## Task 6
 Given your findings in the previous task, you shall next do a causal tree analysis wherein you incorporate inverse probability weighting. To do so, please do the following:
+
+a. Refit the causal tree using causalTree() with same specifications as in #4, and add the weights argument set to 1/p for treated units and 1/(1-p) for control units, where p is the predicted propensity score (see code chunk below for how you could do this). This incorporates IPW into the tree.
+
+b. Assess the balance for this tree in the same way you did in #5 (but you can skip the first step which estimates the propensity score model). Did the balance improve in comparison to #4?
+
+```{r}
+#| label: Task 2.6
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
+# create weights
+d$w_ipw <- ifelse(test = d$scholarship == 1,
+                  yes = 1/pmax(d$ps_hat, 0.02),
+                  no = 1/pmax(1-d$ps_hat, 0.02))
+
+
+# fit tree 
+set.seed(5)
+
+if(file.exists("task2_6.rds")){
+  m3 <- readRDS("task2_6.rds")
+  } else {
+    
+    m3 <- causalTree(
+      completed ~ gpa + parental_income +
+             first_generation + sat_score + distance_to_college + financial_need,
+      data      = d,
+      treatment = d$scholarship,
+      weights = w_ipw,
+      split.Rule = "CT", cv.option = "CT", 
+      split.Honest = T, split.Bucket = T, 
+      minsize = 60, cp = 0.000043, bucketNum = 40
+    )
+    
+    saveRDS(m3, "task2_6.rds")
+}
+
+# b.
+d$leaf_2 <- factor(m3$where)
+
+leaf_group_long_2 <- d[, .(
+  n       = .N,
+  mean_ps = mean(ps_hat),
+  sd_ps   = sd(ps_hat)
+  ), by = .(leaf_2, scholarship)]
+
+leaf_group_stats_2 <- data.table::dcast(
+  leaf_group_long_2,
+  leaf_2 ~ scholarship,
+  value.var = c("n", "mean_ps", "sd_ps"),
+  fill = NA_real_
+  )
+
+leaf_balance_2 <- copy(leaf_group_stats_2)[
+  , `:=`(
+    SMD_ps = {
+      denom <- sqrt((sd_ps_1^2 + sd_ps_0^2)/2)
+      ifelse(is.finite(denom) & denom > 0,
+             abs(mean_ps_1 - mean_ps_0) / denom, NA_real_)
+      }
+    )
+  ][order(-SMD_ps)]
+
+leaf_balance_2 |> kable()
+
+leaf_balance_2$SMD_ps |> 
+  barplot(main = "Propensityscore difference per leaf")
+```
+
+The skewness of the plot is lower, indicating a more stable distribution of leafs, when ignoring the 2 that have a super high propensityscoredifference.
+
+
+c. Visualize the tree and provide an interpretation of its structure, highlighting what you think is interesting in it. Are the conclusions you draw from this tree different from those in #4? What does this suggest about the findings in #4?
+
+```{r}
+#| label: Task 2.6c
+#| fig.align: center
+#| fig-width: 15
+#| fig-height: 7
+#| fig-caption: "Causal Tree"
+
+m3 |> rpart.plot()
+```
+
+The population with the biggest treatment effect are students with:
+- first generation student (first_generation = 1)
+- GPA of at least 2.9
+- financial need of at least 71
+- parental income of at least 60
+- SAT score of at least 1029
+- GPA below 2.5
+
+The population with the smallest treatment effect are students with:
+- no first generation student (first_generation = 0)
+- SAT score below 1107
+- SAT score below 1005
+- GPA below 2.6
+
+
+d. To get a sense of the subgroups contained within each leaf (of interest), please describe its average properties in terms of all the input variables (except treatment).
+
+```{r}
+#| label: Task 2.6d1
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
+pca <- d[, c("completed", "gpa", "parental_income", "first_generation",
+             "sat_score", "distance_to_college", "financial_need")
+         ] |>
+  prcomp(scale. = TRUE, center = TRUE)
+
+d$PC1 <- pca$x[, 1]
+d$PC2 <- pca$x[, 2]
+
+leaf_summary <- aggregate(
+  cbind(PC1, PC2, completed, gpa, parental_income, first_generation,
+        sat_score, distance_to_college, financial_need) ~ leaf_2,
+  data = d,
+  FUN = mean
+)
+
+print(leaf_summary)
+
+leaf_pcs <- aggregate(cbind(PC1, PC2) ~ leaf_2, data = d, FUN = mean)
+
+par(mfrow = c(1, 1)); plot(leaf_pcs$PC1, leaf_pcs$PC2, 
+     pch = 19, cex = 2, col = "steelblue",
+     xlab = "PC1", ylab = "PC2",
+     main = "Leaf Centroids in PC Space"); text(leaf_pcs$PC1, leaf_pcs$PC2, labels = leaf_pcs$leaf_2, pos = 2)
+```
+
+```{r}
+#| label: Task 2.6d2
+#| fig.align: center
+#| fig-width: 7
+#| fig-height: 4
+
+par(mfrow = c(1, 2), mar = c(4, 10, 3, 1))
+
+# PC1
+barplot(sort(pca$rotation[, 1]), horiz = TRUE, las = 1,
+        col = "steelblue4", main = "PC1 Loadings")
+abline(v = 0, lty = 2)
+
+# PC2
+barplot(sort(pca$rotation[, 2]), horiz = TRUE, las = 1,
+        col = "steelblue4", main = "PC2 Loadings")
+abline(v = 0, lty = 2)
+
+par(mfrow = c(1, 1))
+```
+
+The PCA reveals that many leafs are associated with high PC1 values and most are centered for PC2. PC1 is representing fincancial need where students with rich parents are not in financial need. PC2 is making a distinction between the distance to the college were students who live closer get better grades. We can see that leaf 4 represents the students with rich parents that do not have much better grades than the mean of the students. Most students have above average financial need and no rich parents. Cluster 11 and 18 are students who live far apart and are getting bad grades, while leaf 31 are students that get the best grades. They are also in mediocre financial need.
+
+e. How do these results map onto your findings in the first analysis in #1? Do you find that the variables suggested are most important indeed are so? What would you say to your co-author?
+
+My coauthor seems to be right! Financial need is the most important divider between groups of students! nice catch!
+
 
