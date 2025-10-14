@@ -557,12 +557,14 @@ par(mfrow = c(1, 2), mar = c(4, 10, 3, 1))
 
 # PC1
 barplot(sort(pca$rotation[, 1]), horiz = TRUE, las = 1,
-        col = "steelblue4", main = "PC1 Loadings")
+        col = hcl.colors(7, palette = "Blue-Red2", rev = T), 
+        main = "PC1 Loadings")
 abline(v = 0, lty = 2)
 
 # PC2
 barplot(sort(pca$rotation[, 2]), horiz = TRUE, las = 1,
-        col = "steelblue4", main = "PC2 Loadings")
+        col = hcl.colors(7, palette = "Blue-Red2", rev = T), 
+        main = "PC2 Loadings")
 abline(v = 0, lty = 2)
 
 par(mfrow = c(1, 1))
@@ -574,4 +576,113 @@ e. How do these results map onto your findings in the first analysis in #1? Do y
 
 My coauthor seems to be right! Financial need is the most important divider between groups of students! nice catch!
 
+# Part 3
 
+In this part, you will continue working with the scholarship dataset from Part 2.
+
+
+##  Task 1
+
+In this last part, you shall continue with the exploration of heterogeneous treatment effects. But instead of standard OLS and causal trees, you shall use causal forests. Before doing so, please answer the question: why is it not necessary to include inverse probability weighting in causal forest, like we did for trees?
+
+The original idea of the IPW was to balance the trees across treated and untreated population. We wanted to make the leafs as comparable as possible. My including probability weighting we limited the information/influence of less comparable subgroups in the resulting tree. Causal forests algorithms include augmented inverse probability weighting (AIPW) by default. [https://chenxing.space/blog/a-walkthrough-of-how-causal-forest-works/#causal-forest](https://chenxing.space/blog/a-walkthrough-of-how-causal-forest-works/#causal-forest)
+
+
+## Task 2
+
+2. Now, run a causal forest analysis following these steps:
+
+a. Estimate the causal forest using the function causal_forest() from the grf package, specifying the input arguments as follows: X (matrix of covariates), Y (outcome), W (treatment), num.trees=2000, and honesty=TRUE. Set a seed for reproducibility. Report the average treatment effect using average_treatment_effect().
+
+b. Examine which variables were most important to account for the heterogeneity in treatment effect by using the function variable_importance(). Make a bar chart and interpret. Does this result line up with your findings using causal tree—do the most important variables here overlap with those showing up in the best causal tree?
+
+c. For the two variables you identified as most important, please examine how the effects vary along these dimensions. To do so, divide into quintiles of these variables (if continuous) and calculate average treatment effects for each subcategory separately. Plot how the treatment effect varies across quintiles and interpret. Does this result provide additional information to what you could infer from the causal tree?
+
+
+```{r}
+#|label: Task 3.2
+
+d <- data.frame(d)
+
+confounders <- c("gpa", "parental_income", "first_generation",
+                 "sat_score", "distance_to_college", "financial_need")
+
+# a
+
+set.seed(5)
+if(file.exists("task3_2.rds")){
+  m4 <- readRDS("task3_2.rds")
+  } else {
+    
+    m4 <- causal_forest(d[,confounders] |> 
+                      as.matrix(),
+                    d$completed, 
+                    d$scholarship, 
+                    num.trees = 2000, 
+                    honesty = TRUE)
+    
+    saveRDS(m4, "task3_2.rds")
+}
+
+average_treatment_effect(m4)
+```
+
+```{r}
+#| label: Task3.2b
+
+# b
+par(mar = c(5, 10, 4, 2))
+
+variable_importance(m4) |>
+  setNames(confounders) |>
+  sort() |>
+  as.table() |>
+  barplot(horiz = TRUE, 
+          las = 1,
+          col = hcl.colors(6,rev = T),
+          main = "Variable Importance Plot")
+```
+
+This result aligns with the causal tree, since the first split in the tree was always `first_generation`.
+
+
+
+```{r}
+#| label: Task3.2c
+#| fig.align: center
+#| fig-width: 12
+#| fig-height: 5
+
+# Get predicted treatment effects
+d$tau_hat <- predict(m4)$predictions
+
+# Get top 2 most important variables
+var_imp <- variable_importance(m4)
+names(var_imp) <- confounders
+top_vars <- names(sort(var_imp, decreasing = TRUE)[1:2])
+
+
+# plot
+par(mfrow = c(1, 2),
+    mar = c(3, 3, 3, 3))
+
+barplot(tapply(d$tau_hat, d$first_generation, mean),
+        names.arg = c("Not First-Gen", "First-Gen"),
+        col = hcl.colors(2,palette = "SunsetDark"),
+        main = "ATE by First Generation",
+        ylab = "ATE")
+
+d$quintile <- cut(d[[top_vars[2]]], 
+                  breaks = quantile(d[[top_vars[2]]], 
+                                    probs = seq(0, 1, 0.2)),
+                  include.lowest = T,
+                  labels = paste0("Q", 1:5))
+
+barplot(tapply(d$tau_hat, d$quintile, mean),
+        col  = hcl.colors(5,palette = "SunsetDark"),
+        main = paste("ATE by", top_vars[2], "Quintiles"),
+        ylab = "ATE",
+        xlab = "Quintiles")
+```
+
+Yes, the causal forest provides important additional insights. While the causal tree identified first-generation status and SAT scores as key moderators through discrete splits, the forest reveals the magnitude and continuous nature of these effects. First-generation students show treatment effects 6 times larger than non-first-generation students (0.25 vs 0.04). SAT scores show a smooth, monotonic increase in treatment effects across quintiles rather than discrete jumps, suggesting scholarships benefit students across the entire SAT distribution with gradually increasing returns. This continuous pattern would be obscured by the tree's binary splits.
