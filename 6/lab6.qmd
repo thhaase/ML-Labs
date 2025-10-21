@@ -319,12 +319,29 @@ if(file.exists("task2_4.rds")){
       data      = d,
       treatment = d$scholarship,
       split.Rule = "CT", cv.option = "CT", 
-      split.Honest = T, split.Bucket = T, 
-      minsize = 60, cp = 0.00001, bucketNum = 40
+      split.Honest = T, cv.Honest = T, split.Bucket = T,  
+      minsize = 60, cp = 0, bucketNum = 40
     )
     
     saveRDS(m2, "task2_4.rds")
 }
+
+# m2 <- causalTree(
+#   completed ~ gpa + parental_income + first_generation +
+#     sat_score + distance_to_college + financial_need,
+#   data      = d,
+#   treatment = d$scholarship,
+#   split.Rule = "CT",
+#   split.Honest = TRUE,
+#   cv.option = "CT",
+#   cv.Honest = TRUE,
+#   split.Bucket = TRUE,
+#   bucketNum = 40,
+#   minsize = 60,
+#   cp = 0
+# )
+
+
 
 # b
 m2 |> rpart.plot()
@@ -457,7 +474,7 @@ d$leaf_2 <- factor(m3$where)
 
 leaf_group_long_2 <- d[, .(
   n       = .N,
-  mean_ps = mean(ps_hat),
+  mean_ps = weighted.mean(ps_hat, w = d$w_ipw),
   sd_ps   = sd(ps_hat)
   ), by = .(leaf_2, scholarship)]
 
@@ -484,7 +501,7 @@ leaf_balance_2$SMD_ps |>
   barplot(main = "Propensityscore difference per leaf")
 ```
 
-The skewness of the plot is lower, indicating a more stable distribution of leafs, when ignoring the 2 that have a super high propensityscoredifference.
+The tree is waayyy more balanced now :)
 
 
 c. Visualize the tree and provide an interpretation of its structure, highlighting what you think is interesting in it. Are the conclusions you draw from this tree different from those in #4? What does this suggest about the findings in #4?
@@ -519,8 +536,14 @@ d. To get a sense of the subgroups contained within each leaf (of interest), ple
 ```{r}
 #| label: Task 2.6d1
 #| fig.align: center
-#| fig-width: 7
-#| fig-height: 4
+#| fig-width: 9
+#| fig-height: 6
+
+leafeffects <- copy(d)[, leaf := m3$where][,
+  .(n=.N, 
+    eff = mean(completed[scholarship==1]) - mean(completed[scholarship==0])),
+  by = leaf][order(-eff)]
+
 
 pca <- d[, c("completed", "gpa", "parental_income", "first_generation",
              "sat_score", "distance_to_college", "financial_need")
@@ -537,21 +560,33 @@ leaf_summary <- aggregate(
   FUN = mean
 )
 
-print(leaf_summary)
+#print(leaf_summary)
 
 leaf_pcs <- aggregate(cbind(PC1, PC2) ~ leaf_2, data = d, FUN = mean)
 
-par(mfrow = c(1, 1)); plot(leaf_pcs$PC1, leaf_pcs$PC2, 
-     pch = 19, cex = 2, col = "steelblue",
+leaf_pcs <- merge(leaf_pcs, leafeffects[, c("leaf", "eff")], 
+                     by.x = "leaf_2", by.y = "leaf")
+
+plot(leaf_pcs$PC1, leaf_pcs$PC2, 
+     pch = 19, cex = 2, 
+     col = hcl.colors(nrow(leaf_pcs), palette = "Blue-Red 3")[rank(leaf_pcs$eff)],
      xlab = "PC1", ylab = "PC2",
-     main = "Leaf Centroids in PC Space"); text(leaf_pcs$PC1, leaf_pcs$PC2, labels = leaf_pcs$leaf_2, pos = 2)
+     main = "Leaf Centroids in PC Space (colored by effect size)")
+text(leaf_pcs$PC1, leaf_pcs$PC2, labels = leaf_pcs$leaf_2, pos = 2)
+legend("topleft", pch = 19, title = "Effect Size",
+       legend = sprintf("%.2f", 
+                        quantile(leaf_pcs$eff, 
+                                 probs = c(0, 0.25, 0.5, 0.75, 1))),
+       col = hcl.colors(5, palette = "Blue-Red 3", 
+                        rev = TRUE),
+       cex = 0.8, bty = "n")
 ```
 
 ```{r}
 #| label: Task 2.6d2
 #| fig.align: center
-#| fig-width: 7
-#| fig-height: 4
+#| fig-width: 12
+#| fig-height: 5
 
 par(mfrow = c(1, 2), mar = c(4, 10, 3, 1))
 
