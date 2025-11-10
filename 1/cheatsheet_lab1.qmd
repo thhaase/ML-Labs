@@ -1,0 +1,332 @@
+---
+title: "Lab 1"
+subtitle: ""
+author: "Thomas Haase"
+date: last-modified
+date-format: long
+ 
+execute:
+  warning: false
+  echo: false
+  error: false  
+format: 
+  pdf: 
+    toc: true
+    geometry:
+     - top=2cm
+     - left=2cm
+     - right=2cm
+     - bottom=3cm
+    fig-pos: 'h'
+    fig-cap-location: bottom
+    tbl-cap-location: bottom
+    include-in-header:
+    - text: |
+        \usepackage{placeins}
+number-sections: false
+#bibliography: citations.bib
+editor_options: 
+  chunk_output_type: console
+---
+
+------------------------------------------------------------------------
+
+```{r}
+#| warning: false
+#| echo: false
+#| error: false
+#| output: false
+
+setwd("~/Github/ML-Labs/1")
+
+set.seed(2)
+
+# Part 1
+library(data.table)
+library(caret)
+library(glmnet)
+
+# Part 2
+library(splines)
+library(ggeffects)
+```
+
+# Part 1 - Bernie Sanders and Donald Trump tweets
+
+## Task 1.1
+
+```{r}
+data <- fread(file = './trumpbernie.csv')
+
+data[1:5,20:25]
+nrow(data)
+ncol(data)
+```
+
+High-dimensionality describes a dataset where the number of variables is large relative to the number of observations. Since the columncount of the data is larger than the number of observations the dataset is highdimensional. A logistic regression is a standard linear, can only fit n parameters and produces a perfect fit for p >> n since each observation can be completely explained. Since in this case also the "noise" (<tiny details we are not interested in>) is part of the data modeling, the model becomes too flexible. This is also called overfitting.
+
+## Task 1.2
+
+### a)
+
+```{r}
+glm <- glm(trump_tweet ~ .,
+           data = data,
+           family = "binomial")
+
+coef(glm)[1000:1050]
+```
+
+A lot of coefficients are NA/not defined values. The model only fits the parameters it needs to reach a perfect fit because of the high dimensionality and the rest are set to NA. The model tries to improve the fit until it can explain every observation. The variables are arbitrarily selected. Not good.
+
+### b)
+
+```{r}
+# Extract predictions on training data & observed values
+comparison_df <- data.frame(train_predictions=glm$fitted.values,
+observed=glm$y)
+# Apply prediction threshold
+comparison_df$train_predictions<-ifelse(comparison_df$train_predictions>=0.5,
+yes = 1,
+no = 0)
+# Compute accuracy (scale: 0-1, 0=0%, 1=100%)
+nrow(comparison_df[comparison_df$train_predictions==comparison_df$observed,]) /
+nrow(comparison_df)
+```
+
+As theorized in a) the model reached a perfect fit. Without any other information, this is suspiciously high—and one might reasonably suspect that we are overfitting. Knowing that we have fitted a standard linear model to a data set with more columns than rows, we know that we have overfitted the data. In other words, this suggests that predictions from this model are not likely to be good on test data.
+
+## Task 1.3
+
+```{r}
+tc <- trainControl(method = 'cv', number = 3)
+glm_cv <- caret::train(as.factor(trump_tweet) ~ .,
+                       data = data,
+                       method = "glm",
+                       family = "binomial",
+                       trControl = tc)
+
+glm_cv$results
+```
+
+The displayed accuracy is the mean accuracy of the 3 calculated models. The function takes the best model with the highest singular accuracy as the final one. The accuracy measures the amount of in/correctly predicted predictions, which for the model using crossvalidation is \~50%. Before the model reached a perfect fit, but now we extended the previous try through crossvalidation. Thereby we can see the real error the model produces. The model is still overfit, and only as good as flipping a coin. 
+
+## Task 1.4
+
+```{r}
+glm_ridge <- cv.glmnet(x = as.matrix(data[,-"trump_tweet"]), 
+                       y = data$trump_tweet,
+                       nfolds = 5,                # Number CV-folds
+                       standardize = TRUE,        # Standardize X
+                       family = "binomial",       # Outcome binary --> logit/binomial
+                       alpha = 0,                 # alpha=0 --> ridge, for Lasso set it to 1
+                       type.measure = "class",    # measure performance in terms of accuracy
+                       keep = T)    
+
+glm_ridge
+```
+
+The accuracy of the resulting model is `{r} 1 - glm_ridge$cvm[glm_ridge$lambda == glm_ridge$lambda.min] |> round(2)` for Lambda `{r} glm_ridge$lambda.min |> round(2)`.
+
+The first model (Task 1.2) was overfitting which typically happens with models that are too flexible. The standard Logit-model seems to be too flexibel for our task. To reduce the flexibility ridge regression adds a penaltyterm to punish a model using too many variables as predictors. The resulting model is way more accurate than the logistic regression model from before.
+
+## Task 1.5
+
+```{r}
+plot(glm_ridge, sign.lambda = 1) 
+```
+
+The plot shows the misclassification error of the model, which is plotted against the $\lambda$. $\lambda$ is determining how strong the model punishes the addition of new variables.\
+The plot shows that as $\lambda$ increases the misclassification error monotonously rises. Large rise is visible from $\text{Log}(\lambda) = 3$ on upward.
+
+A model with a high $\lambda$ punishes extra variables a lot. Therefore a model with a high $\lambda$ converges towards the most simple model with one predictor. A model like this is very biased, extremely inflexible and can not account for the complexities of the observed data very well. The plot shows that a high $\lambda$ is also connected to a big misclassification error.
+
+A model with a low $\lambda$ does not punishes extra variables at all. A model with a low $\lambda$ converges towards the most complex model with infinite predictors. A model like this extremely flexible and inherits very low bias. It accounts for every little notion in the data - even the ones we are not interested in. The plot shows that a low $\lambda$ is also connected to a very low misclassification error.
+
+The best model lies somewhere in between. The lines help identifying the "perfect" model. The most left line marks the model with the lowest misclassification error. The model marked by the line to the right is only a little less predictive, more detailed: It lies one standard deviation away from the model with the best predicting $lambda$ and is therefore simpler/has less predictors than the best predicting model but still has a sufficient accuracy.
+
+## Task 1.6
+
+```{r}
+print(
+  data.table(word = rownames(coef(glm_ridge, s = "lambda.min")),
+             coef = coef(glm_ridge, s = "lambda.min")[,1])[order(coef,decreasing = T)],
+  topn = 15
+)
+```
+
+When words with a large positive coefficient occur in a tweet it is more likely that the tweet was published by Trumps twitter account. Words with large negative coefficient are also strong predictors, but through the mechanism that Trump is avoiding those words and Sanders is using them instead. This is backed by "patriot", "prayer" and american cities/states being part of the positive coefficients. Trump avoids words with stems like "xenophob", "vulner" and "volunt" which are used by Sanders instead. 
+
+Conclusion based on standardized coefficients (updated): The results indeed align with my expectations. The words most predictive of a Trump tweet include ”fake”,”news”,”witch”,”hunt”. For Bernie, we instead find words like ”afford”,”billionare”,”corporate”,”climate”.
+
+\newpage
+# Part 2
+```{r}
+rm(list = ls()) 
+gc()
+```
+
+## Task 2.1
+
+```{r}
+data <- fread(file = "./Kaggle_Social_Network_Ads.csv")
+data$Purchased <- data$Purchased |> factor() 
+```
+
+## Task 2.2
+
+```{r}
+tc <- trainControl(method = 'cv', number = 5)
+
+set.seed(12345)
+glm <- caret::train(Purchased ~ Age + Salary + Gender,
+                    data = data,
+                    method = "glm",
+                    family = "binomial",
+                    trControl = tc)
+
+glm$results
+```
+
+
+
+## Task 2.3
+
+```{r}
+set.seed(12345)
+gam2 <- caret::train(Purchased ~ ns(Age,2) + ns(Salary,2) + Gender,
+                     data = data,
+                     method = "glm",
+                     family = "binomial",
+                     trControl = tc)
+
+set.seed(12345)
+gam3 <- caret::train(Purchased ~ ns(Age,3) + ns(Salary,3) + Gender,
+                     data = data,
+                     method = "glm",
+                     family = "binomial",
+                     trControl = tc)
+
+set.seed(12345)
+gam4 <- caret::train(Purchased ~ ns(Age,4) + ns(Salary,4) + Gender,
+                     data = data,
+                     method = "glm",
+                     family = "binomial",
+                     trControl = tc)
+
+rbind(gam2$results,gam3$results,gam4$results)
+```
+
+The accuracy of all GAM models is higher than the accuracy of the standard logistic regression. 
+A better accuracy suggests higher flexibility, because the model is representing the data better. A higher flexibility is always associated with lower bias. The logistic regression is therefore more biased because it assumes linearity which makes it less flexible as the GAMs. The logistic regression underfits because of that
+
+I prefer the gam with two degrees of freedom most, because it has the big increase in accuracy compared to the logistic regression just as the other GAMs. When comparing the increase in accuracy between the GAMs with different degrees of freedom, the rise in accuracy is neglegible considering the high flexibility added through another degree of freedom on two variables! 
+
+
+## Task 2.4
+
+```{r}
+#| fig.align: center
+#| layout: "[1,1,1]"
+#| fig-width: 4
+#| fig-height: 3
+
+final_model <- lm(Purchased ~ ns(Age,2) + ns(Salary,2) + Gender, 
+                  data = data)
+
+final_model_predictions <- ggpredict(final_model)
+
+plot(final_model_predictions)
+```
+
+The plot of the "Predicted values of Purchased" vs. Age suggests that the relationship between the Age and the probability of purchasing shows a nonlinear relationship. The older a person gets, the higher gets the steepness of the curve and therefore the rise in purchasing probability.
+
+The plot of the "Predicted values of Purchased" vs. Salary suggests another nonlinear relationship. This relationship is more complex, since the customer's purchase probability follows a U-shaped curve. It starts high at low salaries, drops to its minimum around $60,000-80,000, then rises sharply at higher salary levels.
+
+
+## Task 2.5
+
+The GAMs addressed the nonlinear nature of the data well. This was the main underlying reason, why the fit could be improved. The ridge-(L1) or lasso-regression (L2) extends the original model by a penalty term that punishes high amounts of added variables. Since the data is not high dimensional and only consists of 3 possible predictors it would not improve the fit significantly compared to the standard logistic regression. 
+
+
+# Part 3
+```{r}
+
+rm(list = ls()) 
+gc()
+
+dt <- readRDS("dt.rds")
+
+
+
+
+cv_model <- function(dt, k = 3, d = 5){
+ DATA <- dt
+ k <- k
+ n <- nrow(DATA)
+ d <- d # polynomialdegree
+  set_ids <- cut(seq_len(n), breaks = k, labels = FALSE)
+  
+  folds <- setNames(
+    lapply(1:k, function(i) DATA[set_ids == i, ]),
+    paste0("fold_", 1:k)
+  )
+  
+  models <- setNames(
+    lapply(1:k, function(fold_idx) {
+      setNames(
+        lapply(1:d, function(deg) lm(Y ~ poly(X, deg), data = folds[[fold_idx]])),
+        paste0("deg_", 1:d)
+      )
+    }),
+    paste0("fold_", 1:k)
+  )
+  
+  predictions <- setNames(
+    lapply(1:k, function(fold) {
+      other_folds <- setdiff(1:k, fold)
+      
+      setNames(
+        lapply(1:d, function(deg) {
+          setNames(
+            lapply(other_folds, function(test_fold) {
+              predict(models[[fold]][[deg]], newdata = folds[[test_fold]])
+            }),
+            paste0("test_fold_", other_folds)
+          )
+        }),
+        paste0("deg_", 1:d)
+      )
+    }),
+    paste0("fold_", 1:k)
+  )
+  
+  # Calculate MSE using the predictions object
+  mse <- lapply(names(predictions), function(fold_name) {
+    lapply(names(predictions[[fold_name]]), function(deg_name) {
+      sapply(names(predictions[[fold_name]][[deg_name]]), function(test_fold_name) {
+        pred <- predictions[[fold_name]][[deg_name]][[test_fold_name]]
+        true <- folds[[sub("test_fold_", "fold_", test_fold_name)]]$Y
+        mean((pred - true)^2)
+      }, USE.NAMES = TRUE)
+    })
+  })
+  names(mse) <- names(predictions)
+  for(fold in names(mse)) names(mse[[fold]]) <- names(predictions[[fold]])
+  
+  avg_mse <- sapply(1:d, function(deg) {
+    all_deg_mse <- unlist(lapply(mse, function(fold) fold[[paste0("deg_", deg)]]))
+    mean(all_deg_mse)
+  })
+  names(avg_mse) <- paste0("deg_", 1:d)
+  
+  cat("The average MSE per degree are:\n") 
+  print(as.data.frame(avg_mse))
+  cat("\n\n----------\nDegree with minimum MSE: ", names(avg_mse)[which.min(avg_mse)], "\n")
+  plot(as.numeric(sub("deg_", "", names(avg_mse))),avg_mse, type = "l",
+       main = "Average MSE per Degree",xlab = "Degree",ylab = "Average MSE")
+  return(avg_mse)
+}
+
+cv_model(dt = dt, k = 2, d = 5)
+```
